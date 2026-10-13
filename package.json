@@ -1,0 +1,12 @@
+{
+  "name": "el-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "El Ai - website chat AI berbahasa Indonesia",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
