@@ -154,7 +154,7 @@
         box.appendChild(img);
       } else {
         const chip = document.createElement('div');
-        chip.className = 'att-file glass';
+        chip.className = 'att-file';
         chip.innerHTML = FILE_ICON;
         const name = document.createElement('span');
         name.textContent = a.name || 'file';
@@ -191,7 +191,7 @@
       const body = document.createElement('div');
       body.className = 'msg-body';
       const content = document.createElement('div');
-      content.className = 'content glass';
+      content.className = 'content';
       content.innerHTML = window.ElMd.render(clean(m.content));
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
@@ -655,7 +655,7 @@
     if (cmd === 'on') {
       const ok = await lightOn();
       content = ok
-        ? 'Senter sudah menyala 🔦 Ketuk tombol **Matikan** atau ketik "matikan senter" untuk mematikannya.'
+        ? 'Senter sudah menyala. Ketuk tombol **Matikan** atau ketik "matikan senter" untuk mematikannya.'
         : lightErrorText();
     } else {
       content = lightOff() ? 'Senter sudah dimatikan.' : 'Senter memang sedang tidak menyala.';

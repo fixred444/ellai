@@ -6,6 +6,34 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // ---- Rumus matematika (LaTeX) ----
+  // Rumus diambil dulu sebelum teks di-escape, lalu dirender KaTeX (kalau sudah dimuat).
+  // Kalau KaTeX gagal dimuat, rumus tampil sebagai teks TeX biasa (tetap aman).
+  function mathHtml(tex, display) {
+    const k = typeof window !== 'undefined' && window.katex;
+    if (k) {
+      try {
+        const h = k.renderToString(tex, { displayMode: display, throwOnError: false, strict: 'ignore', trust: false, output: 'html' });
+        return display ? '<span class="math-block">' + h + '</span>' : h;
+      } catch (e) { /* jatuh ke teks biasa */ }
+    }
+    return '<span class="math-raw">' + esc(tex) + '</span>';
+  }
+
+  function extractMath(text, maths) {
+    const keep = (tex, display) => { maths.push({ tex: tex.trim(), display }); return '\u0003' + (maths.length - 1) + '\u0003'; };
+    const spans = [];
+    // lindungi `kode inline` supaya tanda $ di dalamnya tidak dianggap rumus
+    text = text.replace(/`[^`\n]*`/g, (m) => { spans.push(m); return '\u0004' + (spans.length - 1) + '\u0004'; });
+    text = text
+      .replace(/\$\$([\s\S]+?)\$\$/g, (m, t) => keep(t, true))
+      .replace(/\\\[([\s\S]+?)\\\]/g, (m, t) => keep(t, true))
+      .replace(/\\\(([\s\S]+?)\\\)/g, (m, t) => keep(t, false))
+      // $...$ : tanpa spasi di dalam tepi, dan tidak diikuti angka (supaya "$5 dan $10" tidak dianggap rumus)
+      .replace(/(^|[^\\$\w])\$(?!\s)([^$\n]+?)(?<!\s)\$(?![\w$])/g, (m, pre, t) => pre + keep(t, false));
+    return text.replace(/\u0004(\d+)\u0004/g, (m, i) => spans[i]);
+  }
+
   function inline(s) {
     const codes = [];
     s = s.replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return '\u0001' + (codes.length - 1) + '\u0001'; });
@@ -39,7 +67,8 @@
       return '\n\u0002' + (codes.length - 1) + '\u0002\n';
     });
 
-    const lines = esc(text).split('\n');
+    const maths = [];
+    const lines = esc(extractMath(text, maths)).split('\n');
     let out = '';
     let para = [];
     let i = 0;
@@ -114,7 +143,7 @@
       i++;
     }
     flush();
-    return out;
+    return out.replace(/\u0003(\d+)\u0003/g, (m, i) => mathHtml(maths[i].tex, maths[i].display));
   }
 
   const api = { render, esc };
