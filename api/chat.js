@@ -228,6 +228,9 @@ module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
+    // Tampilkan model yang benar-benar dipakai (untuk label di bawah jawaban).
+    res.setHeader('X-El-Model', usedModel);
+    if (!useVision && usedModel !== tier.model) res.setHeader('X-El-Fallback', '1');
     if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
     for await (const chunk of upstream.body) {
