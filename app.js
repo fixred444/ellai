@@ -7,7 +7,7 @@
     chat: $('#chat'), thread: $('#thread'), welcome: $('#welcome'), greeting: $('#greeting'),
     form: $('#composer'), input: $('#input'), send: $('#send'), title: $('#topTitle'),
     themeBtn: $('#themeBtn'), themeLabel: $('#themeLabel'),
-    lightBtn: $('#lightBtn'), lightScreen: $('#lightScreen'), lightBar: $('#lightBar'), lightOffBtn: $('#lightOff'),
+    lightBtn: $('#lightBtn'), lightBar: $('#lightBar'), lightOffBtn: $('#lightOff'),
     attachBtn: $('#attachBtn'), fileInput: $('#fileInput'), tray: $('#tray'), toast: $('#toast'),
   };
 
@@ -472,55 +472,100 @@
   /* ---------- senter ---------- */
   const light = { mode: null, stream: null, track: null, wake: null };
 
-  async function lightOn() {
-    if (light.mode) return light.mode;
-    let denied = false;
-    // 1) Senter asli (lampu flash kamera belakang) — Chrome Android
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-        const track = stream.getVideoTracks()[0];
-        const caps = track && track.getCapabilities ? track.getCapabilities() : {};
-        if (track && caps.torch) {
-          await track.applyConstraints({ advanced: [{ torch: true }] });
-          light.stream = stream; light.track = track; light.mode = 'torch';
-        } else {
-          stream.getTracks().forEach((t) => t.stop());
-        }
-      }
-    } catch (e) { denied = !!(e && e.name === 'NotAllowedError'); }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // 2) Cadangan: layar putih terang
-    if (!light.mode) {
-      light.mode = 'screen';
-      el.lightScreen.hidden = false;
-      light.denied = denied;
+  // Buka kamera dengan constraint tertentu, lalu coba nyalakan torch-nya.
+  async function tryTorch(constraints) {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const track = stream.getVideoTracks()[0];
+    // Chrome baru membuka kontrol torch setelah kamera benar-benar berjalan.
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
+    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none';
+    v.srcObject = stream;
+    document.body.appendChild(v);
+    try { await v.play(); } catch {}
+    await sleep(600);
+
+    let ok = false;
+    try {
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      await track.applyConstraints({ advanced: [{ torch: true }] });
+      const st = track.getSettings ? track.getSettings() : {};
+      ok = st.torch === true || (caps.torch && st.torch === undefined);
+    } catch {}
+    if (!ok && 'ImageCapture' in window) {
+      try {
+        const ic = new ImageCapture(track);
+        const pc = await ic.getPhotoCapabilities();
+        if (pc.fillLightMode && pc.fillLightMode.includes('flash')) { await ic.setOptions({ fillLightMode: 'flash' }); ok = true; }
+      } catch {}
     }
-    try { if (navigator.wakeLock) light.wake = await navigator.wakeLock.request('screen'); } catch {}
-    el.lightBar.hidden = light.mode !== 'torch';
-    el.lightBtn.classList.add('on');
-    return light.mode;
+    if (ok) { Object.assign(light, { stream, track, video: v, mode: 'torch' }); return true; }
+    stream.getTracks().forEach((t) => t.stop());
+    v.remove();
+    return false;
+  }
+
+  async function lightOn() {
+    if (light.mode) return true;
+    light.err = '';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { light.err = 'nosupport'; return false; }
+    const attempts = [{ video: { facingMode: { exact: 'environment' } } }];
+    let triedIds = false;
+    for (let i = 0; i < attempts.length || !triedIds; i++) {
+      if (i >= attempts.length) {
+        // Cek semua kamera belakang (HP berlensa banyak: hanya lensa utama yang punya flash).
+        triedIds = true;
+        try {
+          const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput' && !/front|depan|user/i.test(d.label));
+          devs.forEach((d) => attempts.push({ video: { deviceId: { exact: d.deviceId } } }));
+        } catch {}
+        attempts.push({ video: { facingMode: 'environment' } });
+        if (i >= attempts.length) break;
+      }
+      try {
+        if (await tryTorch(attempts[i])) {
+          try { if (navigator.wakeLock) light.wake = await navigator.wakeLock.request('screen'); } catch {}
+          el.lightBar.hidden = false;
+          el.lightBtn.classList.add('on');
+          return true;
+        }
+      } catch (e) {
+        if (e && e.name === 'NotAllowedError') { light.err = 'denied'; return false; }
+        if (e && e.name === 'NotReadableError') light.err = 'busy';
+      }
+    }
+    if (!light.err) light.err = 'notorch';
+    return false;
   }
 
   function lightOff() {
     if (!light.mode) return false;
     try { if (light.track) light.track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {}); } catch {}
     if (light.stream) light.stream.getTracks().forEach((t) => t.stop());
+    if (light.video) light.video.remove();
     try { if (light.wake) light.wake.release(); } catch {}
-    Object.assign(light, { mode: null, stream: null, track: null, wake: null, denied: false });
-    el.lightScreen.hidden = true;
+    Object.assign(light, { mode: null, stream: null, track: null, video: null, wake: null });
     el.lightBar.hidden = true;
     el.lightBtn.classList.remove('on');
     return true;
   }
 
+  function lightErrorText() {
+    switch (light.err) {
+      case 'denied': return 'Izin kamera ditolak. Ketuk ikon gembok di sebelah alamat website → Izin → Kamera → Izinkan, lalu coba lagi.';
+      case 'busy': return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera lalu coba lagi.';
+      case 'nosupport': return 'Browser ini tidak mengizinkan akses kamera. Pastikan website dibuka lewat https dan pakai Chrome terbaru.';
+      default: return 'Senter asli tidak bisa dinyalakan lewat browser di HP ini (kamera tidak memberi akses ke lampu flash). Coba update Chrome, atau buka lewat Chrome versi terbaru.';
+    }
+  }
+
   el.lightBtn.addEventListener('click', async () => {
     if (light.mode) { lightOff(); return; }
-    const m = await lightOn();
-    if (m === 'screen') toast('Senter kamera tidak tersedia di perangkat ini, memakai layar terang.');
+    if (!(await lightOn())) toast(lightErrorText());
   });
   el.lightOffBtn.addEventListener('click', lightOff);
-  el.lightScreen.addEventListener('click', lightOff);
   document.addEventListener('visibilitychange', () => { if (document.hidden) lightOff(); });
 
   // Deteksi perintah "nyalakan senter" / "matikan senter" (bukan pertanyaan)
@@ -547,12 +592,10 @@
 
     let content;
     if (cmd === 'on') {
-      const mode = await lightOn();
-      content = mode === 'torch'
+      const ok = await lightOn();
+      content = ok
         ? 'Senter sudah menyala 🔦 Ketuk tombol **Matikan** atau ketik "matikan senter" untuk mematikannya.'
-        : (light.denied
-          ? 'Izin kamera ditolak, jadi senter asli tidak bisa dipakai. Sebagai gantinya layar dibuat putih terang. Ketuk layar untuk mematikan.'
-          : 'Senter kamera tidak tersedia di perangkat/browser ini (misalnya iPhone atau laptop), jadi layar dibuat putih terang sebagai cahaya. Ketuk layar untuk mematikan.');
+        : lightErrorText();
     } else {
       content = lightOff() ? 'Senter sudah dimatikan.' : 'Senter memang sedang tidak menyala.';
     }
