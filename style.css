@@ -157,7 +157,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 /* ---------- Main ---------- */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar { display: flex; align-items: center; gap: 10px; padding: 0 2px 10px; min-height: 44px; }
-.top-title { padding: 7px 18px; border-radius: 999px; font-weight: 500; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(60vw, 520px); }
+.top-title { flex: 0 1 auto; min-width: 0; padding: 7px 18px; border-radius: 999px; font-weight: 500; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(60vw, 520px); }
 .top-spacer { flex: 1; }
 
 .chat {
@@ -360,3 +360,18 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 }
 .light-bar[hidden] { display: none; }
 .light-bar button { background: var(--text); color: var(--bg); border: 0; border-radius: 999px; padding: 5px 14px; font-size: 13px; font-weight: 600; }
+
+/* ---------- Tingkatan AI ---------- */
+.tier { position: relative; flex: none; }
+.tier-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text); }
+.tier-btn svg { transition: transform 0.2s; }
+.tier-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.tier-menu { position: absolute; right: 0; top: calc(100% + 8px); width: min(300px, 84vw); padding: 6px; border-radius: 22px; z-index: 40; display: flex; flex-direction: column; gap: 2px; }
+.tier-menu[hidden] { display: none; }
+.tier-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; text-align: left; padding: 11px 14px; border-radius: 16px; background: transparent; border: 0; color: var(--text); }
+.tier-item:hover, .tier-item.on { background: rgba(130, 120, 255, 0.18); }
+.tier-item strong { font-size: 15px; font-weight: 600; }
+.tier-item span { grid-column: 1; color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+.tier-item .tick { grid-column: 2; grid-row: 1 / span 2; color: var(--accent); opacity: 0; }
+.tier-item.on .tick { opacity: 1; }
+.tier-item strong em { font-style: normal; font-weight: 500; font-size: 12px; color: var(--muted); margin-left: 4px; }

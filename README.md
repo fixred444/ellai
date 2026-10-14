@@ -26,6 +26,18 @@ vercel.json, package.json                                  -> konfigurasi
 
 Model Groq lain yang bisa dipakai di `AI_MODEL`: `llama-3.1-8b-instant` (lebih cepat dan ringan), `openai/gpt-oss-120b`, `openai/gpt-oss-20b`. Penyedia lain yang kompatibel dengan format OpenAI (`/chat/completions`) juga bisa dipakai dengan mengganti `AI_BASE_URL` dan `AI_MODEL`.
 
+## Tingkatan AI (El Lite / El Pro / El Max)
+
+Di pojok kanan atas ada pemilih tingkatan, seperti Haiku / Sonnet / Opus pada Claude. Tiap tingkatan memakai model berbeda lewat Environment Variables:
+
+| Tingkatan | Variabel | Bawaan |
+|---|---|---|
+| El Lite (cepat) | `AI_MODEL_LITE` | `llama-3.1-8b-instant` |
+| El Pro (seimbang) | `AI_MODEL_PRO` atau `AI_MODEL` | `llama-3.3-70b-versatile` |
+| El Max (terpintar) | `AI_MODEL_MAX` | `openai/gpt-oss-120b` |
+
+Pilihan pengguna disimpan di browser. Kalau satu model tidak tersedia di akunmu, server otomatis mencari model lain yang boleh dipakai.
+
 ## Jalankan lokal
 
 ```bash
