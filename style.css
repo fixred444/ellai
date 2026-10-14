@@ -20,7 +20,7 @@
   --user-1: rgba(122, 108, 255, 0.62);
   --user-2: rgba(200, 94, 255, 0.5);
   --blob-a: 0.55;
-  --blur: 26px;
+  --blur: 18px;
   --sidebar-w: 288px;
   --r: 28px;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -64,7 +64,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 
 /* ---------- Latar bergerak ---------- */
 .bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: var(--blob-a); will-change: transform; }
+.blob { position: absolute; border-radius: 50%; opacity: var(--blob-a); will-change: transform; transform: translateZ(0); }
 .b1 { width: 52vmax; height: 52vmax; left: -14vmax; top: -16vmax; background: radial-gradient(circle at 30% 30%, #6a5cff, transparent 68%); animation: drift1 26s ease-in-out infinite alternate; }
 .b2 { width: 46vmax; height: 46vmax; right: -14vmax; top: 6vmax; background: radial-gradient(circle at 60% 40%, #ff5fa8, transparent 68%); animation: drift2 31s ease-in-out infinite alternate; }
 .b3 { width: 50vmax; height: 50vmax; left: -8vmax; bottom: -22vmax; background: radial-gradient(circle at 50% 50%, #19d0ff, transparent 68%); animation: drift3 29s ease-in-out infinite alternate; }
@@ -79,8 +79,8 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
   background:
     linear-gradient(160deg, var(--sheen) 0%, rgba(255, 255, 255, 0) 42%),
     linear-gradient(135deg, var(--glass-strong), var(--glass));
-  -webkit-backdrop-filter: blur(var(--blur)) saturate(190%) brightness(1.04);
-  backdrop-filter: blur(var(--blur)) saturate(190%) brightness(1.04);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+  backdrop-filter: blur(var(--blur)) saturate(150%);
   border: 1px solid var(--glass-border);
   box-shadow:
     inset 0 1px 0 var(--hl),
@@ -161,9 +161,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 .top-spacer { flex: 1; }
 
 .chat {
-  flex: 1; overflow-y: auto; scroll-behavior: smooth;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
 }
 .thread { max-width: 780px; margin: 0 auto; padding: 14px 4px 32px; }
 .thread:empty { display: none; }
@@ -189,6 +187,14 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 .chip span { color: var(--muted); font-size: 13.5px; }
 
 /* ---------- Pesan ---------- */
+/* Performa scroll: elemen yang jumlahnya banyak tidak memakai backdrop-filter */
+.content.glass, .att-file.glass {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: inset 0 1px 0 var(--hl);
+}
+:root:not([data-theme="light"]) .content.glass { background: linear-gradient(135deg, rgba(255,255,255,0.13), rgba(255,255,255,0.07)); }
+:root[data-theme="light"] .content.glass { background: rgba(255, 255, 255, 0.62); }
+
 .msg { display: flex; gap: 12px; margin: 20px 0; }
 .msg.user { flex-direction: column; align-items: flex-end; gap: 8px; }
 .bubble {
@@ -196,8 +202,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
   color: #fff; padding: 11px 18px; border-radius: 24px 24px 8px 24px; max-width: 86%;
   white-space: pre-wrap; overflow-wrap: anywhere;
   border: 1px solid rgba(255, 255, 255, 0.38);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 28px rgba(120, 90, 255, 0.3);
-  -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 .msg.assistant .logo { width: 30px; height: 30px; border-radius: 10px; font-size: 13px; margin-top: 8px; }
 .msg-body { flex: 1; min-width: 0; }
@@ -333,8 +338,25 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
   .chat-del { opacity: 1; }
   .toast { bottom: 118px; }
   .bubble, .atts { max-width: 92%; }
+  .blob { animation: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- Senter ---------- */
+.light-btn { margin-left: auto; }
+.light-btn.on { color: #ffd84d; filter: drop-shadow(0 0 8px rgba(255, 216, 77, 0.8)); }
+.light-screen {
+  position: fixed; inset: 0; z-index: 100; background: #fff; color: #333;
+  display: grid; place-items: end center; padding: 0 0 calc(40px + env(safe-area-inset-bottom));
+  font-size: 15px; cursor: pointer;
+}
+.light-screen[hidden] { display: none; }
+.light-bar {
+  position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 60;
+  display: inline-flex; align-items: center; gap: 10px; padding: 9px 10px 9px 18px; border-radius: 999px; font-size: 14px;
+}
+.light-bar[hidden] { display: none; }
+.light-bar button { background: var(--text); color: var(--bg); border: 0; border-radius: 999px; padding: 5px 14px; font-size: 13px; font-weight: 600; }

@@ -7,6 +7,7 @@
     chat: $('#chat'), thread: $('#thread'), welcome: $('#welcome'), greeting: $('#greeting'),
     form: $('#composer'), input: $('#input'), send: $('#send'), title: $('#topTitle'),
     themeBtn: $('#themeBtn'), themeLabel: $('#themeLabel'),
+    lightBtn: $('#lightBtn'), lightScreen: $('#lightScreen'), lightBar: $('#lightBar'), lightOffBtn: $('#lightOff'),
     attachBtn: $('#attachBtn'), fileInput: $('#fileInput'), tray: $('#tray'), toast: $('#toast'),
   };
 
@@ -467,9 +468,107 @@
     return out;
   }
 
+
+  /* ---------- senter ---------- */
+  const light = { mode: null, stream: null, track: null, wake: null };
+
+  async function lightOn() {
+    if (light.mode) return light.mode;
+    let denied = false;
+    // 1) Senter asli (lampu flash kamera belakang) — Chrome Android
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        const track = stream.getVideoTracks()[0];
+        const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+        if (track && caps.torch) {
+          await track.applyConstraints({ advanced: [{ torch: true }] });
+          light.stream = stream; light.track = track; light.mode = 'torch';
+        } else {
+          stream.getTracks().forEach((t) => t.stop());
+        }
+      }
+    } catch (e) { denied = !!(e && e.name === 'NotAllowedError'); }
+
+    // 2) Cadangan: layar putih terang
+    if (!light.mode) {
+      light.mode = 'screen';
+      el.lightScreen.hidden = false;
+      light.denied = denied;
+    }
+    try { if (navigator.wakeLock) light.wake = await navigator.wakeLock.request('screen'); } catch {}
+    el.lightBar.hidden = light.mode !== 'torch';
+    el.lightBtn.classList.add('on');
+    return light.mode;
+  }
+
+  function lightOff() {
+    if (!light.mode) return false;
+    try { if (light.track) light.track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {}); } catch {}
+    if (light.stream) light.stream.getTracks().forEach((t) => t.stop());
+    try { if (light.wake) light.wake.release(); } catch {}
+    Object.assign(light, { mode: null, stream: null, track: null, wake: null, denied: false });
+    el.lightScreen.hidden = true;
+    el.lightBar.hidden = true;
+    el.lightBtn.classList.remove('on');
+    return true;
+  }
+
+  el.lightBtn.addEventListener('click', async () => {
+    if (light.mode) { lightOff(); return; }
+    const m = await lightOn();
+    if (m === 'screen') toast('Senter kamera tidak tersedia di perangkat ini, memakai layar terang.');
+  });
+  el.lightOffBtn.addEventListener('click', lightOff);
+  el.lightScreen.addEventListener('click', lightOff);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) lightOff(); });
+
+  // Deteksi perintah "nyalakan senter" / "matikan senter" (bukan pertanyaan)
+  function lightCommand(text) {
+    const t = (text || '').toLowerCase().trim();
+    if (!t || t.length > 60 || /\?|\b(cara|bagaimana|gimana|kenapa|mengapa|apa itu|apakah|kode|buatkan|bikin)\b/.test(t)) return null;
+    const target = '(senter|lampu\\s*senter|flash(light)?|cahaya|lampu|torch)';
+    const on = new RegExp('\\b(nyala(kan|in)?|menyala(kan)?|hidup(kan|in)?|aktif(kan|in)?|on(kan)?|buka|turn on)\\b.{0,20}\\b' + target + '\\b|\\b' + target + '\\b.{0,12}\\b(on|nyala|hidup|aktif)\\b');
+    const off = new RegExp('\\b(matikan|mati(kan|in)?|nonaktif(kan)?|off(kan)?|tutup|turn off)\\b.{0,20}\\b' + target + '\\b|\\b' + target + '\\b.{0,12}\\b(off|mati|nonaktif)\\b');
+    if (off.test(t)) return 'off';
+    if (on.test(t)) return 'on';
+    return null;
+  }
+
+  async function handleLight(text, cmd) {
+    let chat = current();
+    if (!chat) chat = createChat();
+    const userMsg = { role: 'user', content: text };
+    chat.messages.push(userMsg);
+    if (chat.messages.length === 1) chat.title = text.length > 42 ? text.slice(0, 42) + '…' : text;
+    el.welcome.hidden = true;
+    el.title.textContent = chat.title;
+    el.thread.appendChild(messageEl(userMsg));
+
+    let content;
+    if (cmd === 'on') {
+      const mode = await lightOn();
+      content = mode === 'torch'
+        ? 'Senter sudah menyala 🔦 Ketuk tombol **Matikan** atau ketik "matikan senter" untuk mematikannya.'
+        : (light.denied
+          ? 'Izin kamera ditolak, jadi senter asli tidak bisa dipakai. Sebagai gantinya layar dibuat putih terang. Ketuk layar untuk mematikan.'
+          : 'Senter kamera tidak tersedia di perangkat/browser ini (misalnya iPhone atau laptop), jadi layar dibuat putih terang sebagai cahaya. Ketuk layar untuk mematikan.');
+    } else {
+      content = lightOff() ? 'Senter sudah dimatikan.' : 'Senter memang sedang tidak menyala.';
+    }
+    const reply = { role: 'assistant', content };
+    chat.messages.push(reply);
+    chat.updated = Date.now();
+    save(); renderSidebar();
+    el.thread.appendChild(messageEl(reply));
+    scrollDown(true);
+  }
+
   /* ---------- chat flow ---------- */
   async function send(text, atts) {
     if (busy) return;
+    const cmd = atts.length ? null : lightCommand(text);
+    if (cmd) { handleLight(text, cmd); return; }
     let chat = current();
     if (!chat) chat = createChat();
 
@@ -548,7 +647,7 @@
             const delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
             if (delta) {
               reply.content += delta;
-              if (!raf) raf = requestAnimationFrame(paint);
+              if (!raf) raf = setTimeout(paint, 80);
             }
           } catch {}
         }
@@ -569,7 +668,7 @@
         node.querySelector('.msg-actions').remove();
       }
     } finally {
-      if (raf) cancelAnimationFrame(raf);
+      if (raf) clearTimeout(raf);
       if (reply.content.trim()) contentEl.innerHTML = window.ElMd.render(clean(reply.content));
       else if (!contentEl.querySelector('.error-box')) node.remove();
       node.classList.remove('streaming');
