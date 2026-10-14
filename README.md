@@ -1,6 +1,6 @@
 # El Ai
 
-Website chat AI berbahasa Indonesia dengan tampilan ala Claude/Gemini: sidebar riwayat obrolan, jawaban streaming, mode gelap/terang, dan render Markdown + blok kode.
+Website chat AI berbahasa Indonesia dengan tampilan *liquid glass*: sidebar riwayat obrolan, jawaban streaming, mode gelap/terang, render Markdown + blok kode, dan lampiran (foto, PDF, file teks/kode).
 
 Tanpa build step: HTML/CSS/JS statis + satu serverless function (`api/chat.js`) yang menyimpan API key dengan aman di server.
 
@@ -21,6 +21,7 @@ vercel.json, package.json                                  -> konfigurasi
    - `AI_API_KEY` = API key Groq kamu, diawali `gsk_` (wajib)
    - `AI_BASE_URL` = `https://api.groq.com/openai/v1` (opsional)
    - `AI_MODEL` = `llama-3.3-70b-versatile` (opsional)
+   - `AI_VISION_MODEL` = `qwen/qwen3.8-27b` (opsional, model yang membaca foto)
 5. Klik **Deploy**. Setiap `git push` ke GitHub akan otomatis deploy ulang.
 
 Model Groq lain yang bisa dipakai di `AI_MODEL`: `llama-3.1-8b-instant` (lebih cepat dan ringan), `openai/gpt-oss-120b`, `openai/gpt-oss-20b`. Penyedia lain yang kompatibel dengan format OpenAI (`/chat/completions`) juga bisa dipakai dengan mengganti `AI_BASE_URL` dan `AI_MODEL`.
@@ -41,3 +42,10 @@ Edit konstanta `SYSTEM_PROMPT` di `api/chat.js`.
 
 - Jangan menaruh API key di kode atau commit file `.env`. Key hanya disimpan di Environment Variables Vercel.
 - Endpoint `/api/chat` bisa dipanggil siapa saja yang tahu URL-nya, jadi pakai key dengan batas kuota/biaya.
+
+## Lampiran
+
+- **Foto** (maks 3 per pesan): dikompres di browser lalu dikirim ke model gambar (`AI_VISION_MODEL`). Model itu harus diizinkan di akun Groq kamu.
+- **PDF** (yang berisi teks) dan **file teks/kode** (txt, md, csv, json, js, py, dst.): isinya dibaca di browser lalu disisipkan ke pesan. Dibatasi sekitar 12.000 karakter per file.
+- PDF hasil scan tidak punya teks; kirim sebagai foto.
+- Foto hanya disimpan di memori selama halaman terbuka (riwayat hanya menyimpan thumbnail).

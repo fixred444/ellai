@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>El Ai</title>
   <meta name="description" content="El Ai — asisten AI berbahasa Indonesia untuk bertanya, menulis, belajar, dan coding.">
+  <meta name="theme-color" content="#0b0b14">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <script>
@@ -13,13 +14,17 @@
         var t = localStorage.getItem('elai.theme');
         if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', t);
-      } catch (e) {}
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
     })();
   </script>
 </head>
 <body>
+  <div class="bg" aria-hidden="true"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i></div>
+
   <div class="app">
-    <aside class="sidebar" id="sidebar" aria-label="Riwayat obrolan">
+    <aside class="sidebar glass" id="sidebar" aria-label="Riwayat obrolan">
       <div class="side-head">
         <div class="brand"><span class="logo">El</span><span class="brand-name">El Ai</span></div>
         <button class="icon-btn only-mobile" id="closeSide" type="button" aria-label="Tutup menu">
@@ -48,10 +53,10 @@
 
     <main class="main">
       <header class="topbar">
-        <button class="icon-btn only-mobile" id="openSide" type="button" aria-label="Buka menu">
+        <button class="icon-btn glass only-mobile" id="openSide" type="button" aria-label="Buka menu">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </button>
-        <div class="top-title" id="topTitle">El Ai</div>
+        <div class="top-title glass" id="topTitle">El Ai</div>
         <span class="top-spacer"></span>
       </header>
 
@@ -62,16 +67,16 @@
             <h1 id="greeting">Halo, ada yang bisa El bantu?</h1>
           </div>
           <div class="chips" id="chips">
-            <button type="button" class="chip" data-prompt="Apa itu El Ai?">
+            <button type="button" class="chip glass" data-prompt="Apa itu El Ai?">
               <strong>Apa itu El Ai?</strong><span>Kenalan dulu dengan asisten ini</span>
             </button>
-            <button type="button" class="chip" data-prompt="Jelaskan apa itu kecerdasan buatan dengan bahasa yang sederhana.">
+            <button type="button" class="chip glass" data-prompt="Jelaskan apa itu kecerdasan buatan dengan bahasa yang sederhana.">
               <strong>Belajar hal baru</strong><span>Jelaskan AI dengan bahasa sederhana</span>
             </button>
-            <button type="button" class="chip" data-prompt="Bantu saya menulis email profesional untuk izin tidak masuk kerja besok.">
+            <button type="button" class="chip glass" data-prompt="Bantu saya menulis email profesional untuk izin tidak masuk kerja besok.">
               <strong>Bantu menulis</strong><span>Email profesional untuk izin kerja</span>
             </button>
-            <button type="button" class="chip" data-prompt="Buatkan contoh fungsi JavaScript untuk menghitung rata-rata dari array angka, lengkap dengan penjelasan.">
+            <button type="button" class="chip glass" data-prompt="Buatkan contoh fungsi JavaScript untuk menghitung rata-rata dari array angka, lengkap dengan penjelasan.">
               <strong>Coding</strong><span>Fungsi JavaScript hitung rata-rata</span>
             </button>
           </div>
@@ -80,17 +85,27 @@
       </section>
 
       <div class="composer-wrap">
-        <form class="composer" id="composer" autocomplete="off">
-          <textarea id="input" rows="1" placeholder="Tanya apa saja ke El Ai…" aria-label="Pesan" maxlength="6000"></textarea>
-          <button class="send" id="send" type="submit" aria-label="Kirim" disabled>
-            <svg class="i-send" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-            <svg class="i-stop" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-          </button>
+        <form class="composer glass" id="composer" autocomplete="off">
+          <div class="tray" id="tray" hidden></div>
+          <div class="composer-row">
+            <button class="attach" id="attachBtn" type="button" aria-label="Lampirkan foto atau file" title="Lampirkan foto atau file">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <textarea id="input" rows="1" placeholder="Tanya apa saja ke El Ai…" aria-label="Pesan" maxlength="6000"></textarea>
+            <button class="send" id="send" type="submit" aria-label="Kirim" disabled>
+              <svg class="i-send" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              <svg class="i-stop" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
+          </div>
+          <input type="file" id="fileInput" hidden multiple
+                 accept="image/*,.pdf,.txt,.md,.markdown,.csv,.tsv,.json,.xml,.yaml,.yml,.log,.html,.css,.js,.mjs,.ts,.tsx,.jsx,.py,.java,.c,.h,.cpp,.cs,.go,.rs,.php,.rb,.sql,.sh,.ini,.toml,.env,text/*">
         </form>
         <p class="disclaimer">El Ai bisa saja keliru. Periksa kembali informasi yang penting.</p>
       </div>
     </main>
   </div>
+
+  <div class="toast glass" id="toast" role="status" hidden></div>
 
   <script src="markdown.js"></script>
   <script src="app.js"></script>
