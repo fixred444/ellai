@@ -165,6 +165,14 @@
     return box;
   }
 
+  function modelTag(m) {
+    if (!m || !m.model) return null;
+    const t = document.createElement('span');
+    t.className = 'msg-model' + (m.fallback ? ' warn' : '');
+    t.textContent = (m.tierName ? m.tierName + ' · ' : '') + m.model + (m.fallback ? ' (model cadangan)' : '');
+    return t;
+  }
+
   function messageEl(m) {
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + m.role;
@@ -188,6 +196,8 @@
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
       actions.innerHTML = '<button type="button" class="act" data-copy-msg>Salin</button>';
+      const tag = modelTag(m);
+      if (tag) actions.appendChild(tag);
       body.append(content, actions);
       wrap.append(logo, body);
     }
@@ -720,6 +730,13 @@
         try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
         throw new Error(msg);
       }
+
+      reply.model = res.headers.get('X-El-Model') || '';
+      reply.fallback = res.headers.get('X-El-Fallback') === '1';
+      reply.tierName = (TIERS.find((x) => x.id === tier) || {}).name || '';
+      const tagEl = modelTag(reply);
+      const actionsEl = node.querySelector('.msg-actions');
+      if (tagEl && actionsEl) actionsEl.appendChild(tagEl);
 
       const reader = res.body.getReader();
       const dec = new TextDecoder();
