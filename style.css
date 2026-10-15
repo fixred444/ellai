@@ -330,3 +330,42 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 .conv-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
 .dl-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 8px; }
 .dl-btn { display: inline-flex; align-items: center; padding: 9px 18px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 600; text-decoration: none; }
+
+/* ---------- Mode Belajar ---------- */
+.study-entry { margin-top: 8px; }
+body.study-open { overflow: hidden; }
+.study { position: fixed; inset: 0; z-index: 70; background: var(--bg); color: var(--text); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+.study[hidden] { display: none; }
+.study-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.study-head h2 { flex: 1; margin: 0; font-size: 17px; font-weight: 600; }
+.study select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-m); padding: 8px 10px; font: inherit; font-size: 14px; }
+.study-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 16px 24px; max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+.study-rec { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 6px; }
+.rec-btn { width: 88px; height: 88px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; position: relative; transition: transform 0.12s; }
+.rec-btn:active { transform: scale(0.96); }
+.rec-btn .i-pause { display: none; }
+.study.recording .rec-btn { background: var(--danger); color: #fff; }
+.study.recording .rec-btn .i-mic { display: none; }
+.study.recording .rec-btn .i-pause { display: block; }
+.study.recording .rec-btn::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--danger); opacity: 0.55; animation: recPulse 1.6s ease-out infinite; }
+@keyframes recPulse { from { transform: scale(0.92); opacity: 0.6; } to { transform: scale(1.18); opacity: 0; } }
+.rec-time { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.rec-status { color: var(--muted); font-size: 14px; text-align: center; min-height: 20px; }
+.study-text, .study-make { display: flex; flex-direction: column; gap: 8px; }
+.study-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.study label { font-size: 14px; font-weight: 600; }
+.study-count { color: var(--muted); font-size: 13px; }
+.study textarea { width: 100%; resize: vertical; min-height: 150px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-m); padding: 12px 14px; font: inherit; font-size: 15px; line-height: 1.6; }
+.study textarea:focus { border-color: var(--accent); outline: none; }
+.study-interim { color: var(--muted); font-size: 14px; font-style: italic; min-height: 18px; }
+.study-mini { justify-content: flex-start; }
+.study-mini button, .study-actions button { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 500; }
+.study-mini button:hover, .study-actions button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.study-go { margin-top: 4px; padding: 13px; border: 0; border-radius: var(--r-m); background: var(--accent); color: var(--accent-ink); font-size: 16px; font-weight: 600; }
+.study-go.busy { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.study-out { border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.study-out[hidden], .study-actions[hidden] { display: none; }
+.study-prog { color: var(--muted); font-size: 14px; }
+.study-prog:empty { display: none; }
+.study-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.study-note { margin: 0; padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); text-align: center; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }

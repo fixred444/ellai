@@ -46,6 +46,15 @@ Lampirkan foto (maks. 3), lalu ketuk **Jadikan PDF** / **Jadikan Word** di atas 
 - **Word (.docx)**: AI membaca teks pada foto (OCR) lalu disusun jadi dokumen yang bisa diedit. Jika tidak ada tulisan atau gagal dibaca, foto ditempel apa adanya. Ketik "jadikan word sebagai gambar" untuk memaksa foto ditempel.
 - File hanya tersedia lewat tombol unduh sesaat setelah dibuat.
 
+## Mode Belajar (rekam suara, lalu rangkum)
+
+Buka lewat tombol **Mode Belajar** di sidebar atau di halaman awal. Ketuk mikrofon untuk merekam; suara diubah jadi teks langsung, lalu pilih bentuk hasil (ringkasan, catatan lengkap, poin penting + istilah, atau soal latihan) dan ketuk **Rangkum**.
+
+- Pengenalan suara memakai fitur bawaan browser (Chrome), jadi butuh internet dan izin mikrofon. Tidak memakai kuota API.
+- Teks rekaman bisa diedit dan otomatis tersimpan sebagai draf, jadi aman kalau halaman tertutup.
+- Rekaman panjang dirangkum bertahap (dipotong per bagian lalu digabung), jadi kuliah berjam-jam tetap bisa.
+- Hasil bisa disalin, diunduh sebagai Word, atau disimpan ke riwayat obrolan.
+
 ## Jalankan lokal
 
 ```bash

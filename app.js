@@ -677,6 +677,63 @@
     scrollDown(true);
   }
 
+  /* ---------- mode belajar (rekam suara -> rangkuman) ---------- */
+  // Kirim pesan ke AI dan kumpulkan jawabannya (streaming). onDelta boleh null.
+  async function streamChat(messages, onDelta, signal) {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, tier }),
+      signal,
+    });
+    if (!res.ok) {
+      let msg = 'Maaf, terjadi kesalahan (' + res.status + ').';
+      if (res.status === 413) msg = 'Teks terlalu panjang untuk dikirim sekaligus.';
+      try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
+      throw new Error(msg);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', out = '', finished = false;
+    while (!finished) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') { finished = true; break; }
+        try {
+          const j = JSON.parse(data);
+          const d = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+          if (d) { out += d; if (onDelta) onDelta(d); }
+        } catch {}
+      }
+    }
+    return clean(out).trim();
+  }
+
+  function saveStudyToHistory({ title, request, answer }) {
+    if (busy) stop();
+    const chat = createChat();
+    chat.title = title || 'Rangkuman belajar';
+    chat.messages.push({ role: 'user', content: request }, { role: 'assistant', content: answer });
+    chat.updated = Date.now();
+    save(); renderSidebar(); renderThread(); closeSide();
+  }
+
+  window.ElStudy.init({
+    toast,
+    stream: streamChat,
+    render: (md) => window.ElMd.render(clean(md)),
+    save: saveStudyToHistory,
+  });
+  $('#studyBtn').addEventListener('click', () => { closeSide(); window.ElStudy.open(); });
+  $('#studyChip').addEventListener('click', () => window.ElStudy.open());
+
   /* ---------- konversi foto -> PDF / Word ---------- */
   const OCR_PROMPT = 'Salin SEMUA teks yang terlihat pada gambar ini persis seperti aslinya: bahasa, ejaan, angka, serta susunan baris, paragraf, dan daftar dipertahankan. Jangan menambah komentar, penjelasan, atau kalimat pembuka. Jangan memakai blok kode. Jika ada tabel, tulis dengan format | kolom | kolom |. Jika gambar sama sekali tidak berisi tulisan, balas hanya dengan: [TIDAK ADA TEKS]';
 

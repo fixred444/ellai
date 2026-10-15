@@ -39,6 +39,11 @@
         Obrolan baru
       </button>
 
+      <button class="new-chat study-entry" id="studyBtn" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+        Mode Belajar
+      </button>
+
       <div class="side-label">Terbaru</div>
       <nav class="chat-list" id="chatList"></nav>
 
@@ -79,6 +84,9 @@
             <h1 id="greeting">Halo, ada yang bisa El bantu?</h1>
           </div>
           <div class="chips" id="chips">
+            <button type="button" class="chip" id="studyChip">
+              <strong>Mode Belajar</strong><span>Rekam suara kuliah, lalu rangkum</span>
+            </button>
             <button type="button" class="chip" data-prompt="Apa itu El Ai?">
               <strong>Apa itu El Ai?</strong><span>Kenalan dulu dengan asisten ini</span>
             </button>
@@ -124,6 +132,7 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
   <script src="markdown.js"></script>
   <script src="convert.js"></script>
+  <script src="study.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
