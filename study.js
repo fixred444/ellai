@@ -74,6 +74,7 @@
           '</button>' +
           '<div class="rec-time" data-s="time">00:00</div>' +
           '<div class="rec-status" data-s="status"></div>' +
+          '<div class="study-msg" data-s="recmsg" role="alert"></div>' +
         '</section>' +
         '<section class="study-text">' +
           '<div class="study-row"><label for="studyText">Teks rekaman</label><span class="study-count" data-s="count">0 kata</span></div>' +
@@ -87,6 +88,7 @@
             Object.keys(STYLES).map((k) => '<option value="' + k + '">' + STYLES[k].label + '</option>').join('') +
           '</select>' +
           '<button type="button" class="study-go" data-s="go">Rangkum</button>' +
+          '<div class="study-msg" data-s="gomsg" role="alert"></div>' +
         '</section>' +
         '<section class="study-out" data-s="out" hidden>' +
           '<div class="study-prog" data-s="prog" aria-live="polite"></div>' +
@@ -104,7 +106,7 @@
     ui = {
       text: $('text'), interim: $('interim'), count: $('count'), time: $('time'), status: $('status'),
       rec: $('rec'), lang: $('lang'), style: $('style'), go: $('go'), out: $('out'), prog: $('prog'),
-      result: $('result'), actions: $('actions'),
+      result: $('result'), actions: $('actions'), recmsg: $('recmsg'), gomsg: $('gomsg'),
     };
 
     $('close').addEventListener('click', close);
@@ -142,6 +144,13 @@
   }
 
   function toast(m) { if (ctx && ctx.toast) ctx.toast(m); }
+  // Pesan yang tampil langsung di panel (tidak tertutup apa pun) + toast
+  const sayTimers = new Map();
+  function say(node, m) {
+    node.textContent = m;
+    clearTimeout(sayTimers.get(node));
+    if (m) sayTimers.set(node, setTimeout(() => { node.textContent = ''; }, 9000));
+  }
 
   async function copy(t) {
     if (!t || !t.trim()) { toast('Belum ada teks.'); return; }
@@ -215,17 +224,17 @@
         const code = e && e.error;
         if (code === 'not-allowed' || code === 'service-not-allowed') {
           want = false;
-          toast('Izin mikrofon ditolak. Ketuk ikon gembok di sebelah alamat website → Izin → Mikrofon → Izinkan.');
+          say(ui.recmsg, 'Izin mikrofon ditolak. Ketuk ikon gembok di sebelah alamat website → Izin → Mikrofon → Izinkan, lalu coba lagi.');
         } else if (code === 'audio-capture') {
           want = false;
-          toast('Mikrofon tidak terdeteksi atau sedang dipakai aplikasi lain.');
+          say(ui.recmsg, 'Mikrofon tidak terdeteksi atau sedang dipakai aplikasi lain.');
         } else if (code === 'network') {
           errCount++;
-          toast('Pengenal suara butuh koneksi internet.');
+          say(ui.recmsg, 'Pengenal suara butuh koneksi internet. Periksa jaringanmu.');
         } else if (code !== 'no-speech' && code !== 'aborted') {
           errCount++;
         }
-        if (errCount >= 5) { want = false; toast('Rekaman dihentikan karena pengenal suara terus gagal. Coba lagi sebentar.'); }
+        if (errCount >= 5) { want = false; say(ui.recmsg, 'Rekaman dihentikan karena pengenal suara terus gagal. Coba lagi sebentar, atau ketik/tempel teksnya.'); }
       };
       rec.onend = () => {
         active = false;
@@ -245,7 +254,7 @@
   function releaseWake() { try { if (wake) wake.release(); } catch {} wake = null; }
 
   function startRec() {
-    if (!SR) { toast('Browser ini belum bisa merekam suara. Gunakan Chrome.'); setUi(); return; }
+    if (!SR) { say(ui.recmsg, 'Browser ini belum bisa merekam suara. Gunakan Chrome.'); setUi(); return; }
     want = true; errCount = 0; lastFinal = '';
     clearInterval(timer);
     timer = setInterval(() => { if (want && active) { sec++; ui.time.textContent = fmt(sec); } }, 1000);
@@ -301,7 +310,9 @@
   async function summarize() {
     if (want) stopRec();
     const raw = ui.text.value.trim();
-    if (raw.length < 80) { toast('Teks rekaman masih terlalu pendek untuk dirangkum.'); return; }
+    say(ui.gomsg, '');
+    if (!raw) { say(ui.gomsg, 'Belum ada teks untuk dirangkum. Rekam dulu, atau ketik/tempel teksnya di kotak "Teks rekaman". Kalau sudah merekam tapi kotaknya kosong, cek izin mikrofon dan koneksi internet.'); return; }
+    if (raw.length < 30) { say(ui.gomsg, 'Teksnya baru ' + raw.length + ' karakter. Tambahkan lagi (minimal 30 karakter) supaya bisa dirangkum.'); return; }
 
     const style = STYLES[ui.style.value] || STYLES.ringkas;
     ui.out.hidden = false;
@@ -310,6 +321,7 @@
     result = '';
     ui.out.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setBusy(true);
+    ui.prog.textContent = 'Mengirim ke AI…';
     controller = new AbortController();
 
     try {

@@ -249,7 +249,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 .disclaimer { text-align: center; color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); z-index: 50;
+  position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); z-index: 200;
   padding: 9px 16px; border-radius: var(--r-m); font-size: 14px; max-width: min(90vw, 460px); text-align: center;
   background: var(--text); color: var(--bg);
 }
@@ -369,3 +369,6 @@ body.study-open { overflow: hidden; }
 .study-prog:empty { display: none; }
 .study-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .study-note { margin: 0; padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); text-align: center; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+
+.study-msg { color: var(--danger); font-size: 14px; text-align: center; line-height: 1.45; }
+.study-msg:empty { display: none; }
