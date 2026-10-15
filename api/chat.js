@@ -7,6 +7,8 @@
 //   AI_MODEL_MAX     (opsional) -> model untuk "El Max" (paling pintar), default: openai/gpt-oss-120b
 //   AI_VISION_MODEL  (opsional) -> model yang bisa membaca gambar, default: qwen/qwen3.8-27b
 
+const C = require('../lib/core');
+
 const SYSTEM_PROMPT = `Kamu adalah El Ai, asisten AI berbahasa Indonesia yang ramah, jelas, dan membantu.
 
 Aturan umum:
@@ -136,6 +138,20 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Metode tidak diizinkan.' });
   }
 
+  if (!C.sameOrigin(req)) return res.status(403).json({ error: 'Permintaan ditolak.' });
+
+  // ---------- login, status akun, dan kuota harian ----------
+  let user, cfg;
+  try {
+    user = await C.authUser(req);
+    cfg = await C.getConfig();
+  } catch (e) {
+    console.error('auth/db error', e);
+    return res.status(500).json({ error: 'Database belum siap. Hubungi admin.' });
+  }
+  if (!user) return res.status(401).json({ error: 'Silakan masuk dulu untuk memakai El Ai.', code: 'auth' });
+  if (user.status !== 'active') return res.status(403).json({ error: 'Akunmu sedang tidak aktif.', code: 'status', status: user.status });
+
   const apiKey = (process.env.AI_API_KEY || '').trim();
   if (!apiKey) {
     return res.status(500).json({ error: 'AI_API_KEY belum diatur di server (Vercel → Settings → Environment Variables).' });
@@ -155,6 +171,21 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Pesan tidak valid.' });
   }
   const useVision = imageCount > 0;
+
+  const cost = cfg.costs[tierKey];
+  let charged;
+  try { charged = await C.charge(user, cfg, cost); } catch (e) {
+    console.error('quota error', e);
+    return res.status(500).json({ error: 'Database belum siap. Hubungi admin.' });
+  }
+  if (!charged.ok) {
+    return res.status(429).json({
+      error: `Kuota harian habis (${charged.used}/${charged.limit} token). ${tier.label} butuh ${cost} token per pesan. Kuota direset tiap tengah malam WIB.`,
+      code: 'quota', used: charged.used, limit: charged.limit, cost,
+    });
+  }
+  let refunded = false;
+  const giveBack = () => { if (!refunded) { refunded = true; C.refund(user, cost).catch(() => {}); } };
 
   const basePayload = {
     messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n\n' + tier.note }, ...messages],
@@ -222,6 +253,7 @@ module.exports = async function handler(req, res) {
       if (!reason && detail) reason = detail.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       msg += ` (model: ${usedModel}, host: ${(() => { try { return new URL(BASE_URL).host; } catch { return BASE_URL; } })()})`;
       if (reason && typeof reason === 'string') msg += ` [${upstream.status}] ${reason.slice(0, 200)}`;
+      giveBack();
       return res.status(502).json({ error: msg });
     }
 
@@ -231,6 +263,9 @@ module.exports = async function handler(req, res) {
     res.setHeader('X-Accel-Buffering', 'no');
     // Tampilkan model yang benar-benar dipakai (untuk label di bawah jawaban).
     res.setHeader('X-El-Model', usedModel);
+    res.setHeader('X-El-Used', String(charged.used));
+    res.setHeader('X-El-Limit', Number.isFinite(charged.limit) ? String(charged.limit) : 'unlimited');
+    res.setHeader('X-El-Cost', String(cost));
     if (!useVision && usedModel !== tier.model) res.setHeader('X-El-Fallback', '1');
     if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
@@ -241,6 +276,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     if (err && err.name === 'AbortError') return;
     console.error('Chat handler error', err);
+    if (!res.headersSent) giveBack();
     if (!res.headersSent) return res.status(500).json({ error: 'Terjadi kesalahan di server.' });
     res.end();
   }
