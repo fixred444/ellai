@@ -372,3 +372,70 @@ body.study-open { overflow: hidden; }
 
 .study-msg { color: var(--danger); font-size: 14px; text-align: center; line-height: 1.45; }
 .study-msg:empty { display: none; }
+
+/* ---------- Akun, kuota, paket ---------- */
+body.booting .app { visibility: hidden; }
+.quota { padding: 10px 10px 12px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: var(--r-m); }
+.quota[hidden], .acct[hidden] { display: none; }
+.q-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; color: var(--muted); }
+.q-row b { font-family: var(--mono); font-weight: 500; font-size: 13.5px; color: var(--text); }
+.q-bar { height: 4px; margin: 8px 0 6px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.q-bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .3s; }
+.quota.low .q-bar i { background: #e0a43a; }
+.quota.out .q-bar i { background: var(--danger); }
+.q-sub { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.q-up { margin-top: 8px; width: 100%; padding: 7px 10px; border-radius: var(--r-s); border: 1px solid var(--line); background: none; font-size: 13.5px; font-weight: 600; }
+.q-up:hover { border-color: var(--accent); color: var(--accent); }
+
+.acct { position: relative; }
+.acct-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-s); background: none; text-align: left; }
+.acct-btn:hover { background: var(--surface-2); }
+.avatar { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+.acct-txt { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.acct-txt strong { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acct-txt small { font-size: 12.5px; color: var(--muted); }
+.acct-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-m); box-shadow: 0 12px 32px rgba(0,0,0,.3); display: flex; flex-direction: column; z-index: 50; }
+.acct-menu[hidden] { display: none; }
+.acct-menu a, .acct-menu button { display: block; padding: 9px 12px; border: 0; background: none; border-radius: var(--r-s); text-align: left; color: var(--text); text-decoration: none; font-size: 14.5px; }
+.acct-menu a[hidden] { display: none; }
+.acct-menu a:hover, .acct-menu button:hover { background: var(--surface-2); }
+
+.modal-bg { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.55); overflow-y: auto; }
+.modal-bg[hidden] { display: none; }
+.modal { width: 100%; max-width: 520px; margin: auto; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); }
+.modal h3 { margin: 0 0 4px; font-size: 21px; letter-spacing: -.02em; }
+.modal .m-sub { margin: 0 0 18px; color: var(--muted); font-size: 14.5px; }
+.modal .m-close { float: right; margin: -8px -8px 0 8px; }
+.plans { border-top: 1px solid var(--line); }
+.plan { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.plan strong { font-size: 16px; }
+.plan .p-meta { grid-column: 1; color: var(--muted); font-size: 13.5px; }
+.plan .p-price { grid-column: 2; grid-row: 1; text-align: right; font-family: var(--mono); font-size: 15px; }
+.plan .p-price s { display: block; color: var(--muted); font-size: 12.5px; }
+.plan .p-price em { font-style: normal; margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
+.plan button { grid-column: 2; grid-row: 2; justify-self: end; padding: 6px 14px; border-radius: var(--r-s); border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 13.5px; }
+.plan button:disabled { opacity: .6; }
+.note-box { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); font-size: 14px; color: var(--muted); white-space: pre-wrap; }
+.note-box b { color: var(--text); }
+.m-list { margin: 16px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.m-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); color: var(--muted); }
+.m-list li b { color: var(--text); font-weight: 600; }
+
+.gate { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: var(--bg); overflow-y: auto; }
+.gate[hidden] { display: none; }
+.gate-card { width: 100%; max-width: 460px; margin: auto; }
+.gate-card .logo { margin-bottom: 20px; }
+.gate-card h2 { margin: 0 0 8px; font-size: 26px; letter-spacing: -.02em; line-height: 1.2; }
+.gate-card p { margin: 0 0 16px; color: var(--muted); }
+.gate-reason { padding: 12px 14px; border-left: 2px solid var(--danger); background: var(--surface); border-radius: 0 var(--r-s) var(--r-s) 0; color: var(--text); font-size: 15px; margin-bottom: 20px; }
+.gate-card label { display: block; margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.gate-card textarea, .gate-card input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; outline: none; margin-bottom: 14px; }
+.gate-card textarea { min-height: 110px; resize: vertical; }
+.gate-card textarea:focus, .gate-card input:focus { border-color: var(--accent); }
+.btn { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line); background: none; font-weight: 600; font-size: 14.5px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn:disabled { opacity: .6; }
+.gate-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.gate-msg { margin: 0 0 14px; font-size: 14.5px; color: var(--danger); }
+.gate-msg.ok { color: var(--accent); }
+@media (max-width: 820px) { .quota { margin-bottom: 6px; } }

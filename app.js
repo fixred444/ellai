@@ -12,7 +12,7 @@
     attachBtn: $('#attachBtn'), fileInput: $('#fileInput'), tray: $('#tray'), toast: $('#toast'),
   };
 
-  const STORE = 'elai.chats.v1';
+  const STORE = 'elai.chats.v1' + (window.ELAI_USER ? '.' + window.ELAI_USER.id : '');
   const MAX_CHATS = 40;
   const MAX_ATTACH = 5;          // total lampiran per pesan
   const MAX_IMAGES = 3;          // batas gambar per permintaan

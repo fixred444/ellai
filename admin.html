@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin — El Ai</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="admin.css">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('elai.theme');
+        if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+    })();
+  </script>
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/admin"><span class="logo">El</span><span>El Ai</span><em>Admin</em></a>
+    <nav class="nav" id="nav">
+      <button data-v="overview" aria-current="page">Ringkasan</button>
+      <button data-v="users">Pengguna</button>
+      <button data-v="tickets">Banding <i id="bTickets" hidden></i></button>
+      <button data-v="orders">Pembayaran <i id="bOrders" hidden></i></button>
+      <button data-v="config">Harga &amp; kuota</button>
+      <button data-v="log">Log</button>
+    </nav>
+    <span class="grow"></span>
+    <a class="link" href="/">Ke chat</a>
+    <button class="link" id="out" type="button">Keluar</button>
+  </header>
+  <main id="view" class="view" aria-live="polite"><p class="muted">Memuat…</p></main>
+  <div class="modal-bg" id="mbg" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="admin.js"></script>
+</body>
+</html>

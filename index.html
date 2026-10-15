@@ -24,7 +24,7 @@
     })();
   </script>
 </head>
-<body>
+<body class="booting">
   <div class="app">
     <aside class="sidebar" id="sidebar" aria-label="Riwayat obrolan">
       <div class="side-head">
@@ -48,6 +48,22 @@
       <nav class="chat-list" id="chatList"></nav>
 
       <div class="side-foot">
+        <div class="quota" id="quota" hidden>
+          <div class="q-row"><span>Kuota hari ini</span><b id="qText">–</b></div>
+          <div class="q-bar"><i id="qFill"></i></div>
+          <div class="q-sub" id="qSub"></div>
+          <button class="q-up" id="upgradeBtn" type="button">Tambah kuota</button>
+        </div>
+        <div class="acct" id="acct" hidden>
+          <button class="acct-btn" id="acctBtn" type="button" aria-haspopup="menu" aria-expanded="false">
+            <span class="avatar" id="avatar">?</span>
+            <span class="acct-txt"><strong id="acctName"></strong><small id="acctPlan"></small></span>
+          </button>
+          <div class="acct-menu" id="acctMenu" role="menu" hidden>
+            <a role="menuitem" id="adminLink" href="/admin.html" hidden>Panel admin</a>
+            <button role="menuitem" type="button" id="logoutBtn">Keluar</button>
+          </div>
+        </div>
         <button class="ghost-btn" id="themeBtn" type="button">
           <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
           <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
@@ -130,9 +146,7 @@
   <div class="toast" id="toast" role="status" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-  <script src="markdown.js"></script>
-  <script src="convert.js"></script>
-  <script src="study.js"></script>
-  <script src="app.js"></script>
+  <!-- account.js memeriksa login dulu, lalu memuat markdown.js, convert.js, study.js, app.js -->
+  <script src="account.js"></script>
 </body>
 </html>

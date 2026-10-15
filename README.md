@@ -8,7 +8,8 @@ Tanpa build step: HTML/CSS/JS statis + satu serverless function (`api/chat.js`) 
 
 ```
 index.html, style.css, app.js, markdown.js, favicon.svg   -> tampilan
-api/chat.js                                                -> backend (Vercel Function)
+api/*.js, lib/*.js                                         -> backend (Vercel Functions)
+masuk.html, auth.*, admin.*, account.js                    -> login, panel admin, akun
 vercel.json, package.json                                  -> konfigurasi
 ```
 
@@ -54,6 +55,28 @@ Buka lewat tombol **Mode Belajar** di sidebar atau di halaman awal. Ketuk mikrof
 - Teks rekaman bisa diedit dan otomatis tersimpan sebagai draf, jadi aman kalau halaman tertutup.
 - Rekaman panjang dirangkum bertahap (dipotong per bagian lalu digabung), jadi kuliah berjam-jam tetap bisa.
 - Hasil bisa disalin, diunduh sebagai Word, atau disimpan ke riwayat obrolan.
+
+
+## Login, kuota harian, dan panel admin
+
+Halaman: `/masuk` (masuk & daftar), `/` (chat, wajib login), `/admin` (khusus admin).
+
+**Setup wajib di Vercel** (Settings → Environment Variables):
+
+1. Pasang database: Storage → Marketplace → **Upstash Redis** (paket gratis cukup), hubungkan ke proyek. Variabel `KV_REST_API_URL` / `KV_REST_API_TOKEN` terisi otomatis.
+2. `SESSION_SECRET` = teks acak panjang (min. 16 karakter).
+3. `ADMIN_EMAIL` dan `ADMIN_PASSWORD` = login akun admin. Ganti kata sandi admin cukup dengan mengubah variabel ini lalu redeploy.
+
+**Kuota**: tiap akun gratis dapat 100 token/hari (reset 00.00 WIB). El Lite memakai 5 token per pesan, El Pro 10, El Max 15. Dicek di server (`api/chat.js`), jadi tidak bisa dilewati dari browser. Pesan yang gagal di sisi AI otomatis dikembalikan tokennya.
+
+**Panel admin** (`/admin`):
+- *Pengguna*: bekukan, nonaktifkan karena usia, minta verifikasi, aktifkan kembali, tandai terverifikasi, atur batas kuota khusus, reset pemakaian, beri/cabut paket, hapus akun.
+- *Banding*: akun yang beku/nonaktif/butuh verifikasi melihat layar khusus berisi formulir banding atau verifikasi. Admin menyetujui (akun aktif lagi) atau menolak dengan catatan.
+- *Pembayaran*: pengguna memesan paket Mingguan/Bulanan/Tahunan, admin mengonfirmasi setelah uang masuk, lalu paket aktif dan kuota harian naik.
+- *Harga & kuota*: ubah harga, diskon (persen + tanggal berakhir), kuota pelanggan, kuota gratis, biaya token tiap tingkatan, usia minimum daftar, dan teks petunjuk pembayaran.
+- *Log*: riwayat tindakan admin.
+
+Pembayaran saat ini manual (pengguna transfer, admin konfirmasi). Payment gateway otomatis (Midtrans/Xendit) belum dipasang.
 
 ## Jalankan lokal
 
