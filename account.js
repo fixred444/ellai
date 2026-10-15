@@ -53,32 +53,90 @@
     bg.hidden = false;
     return bg;
   }
-  const ORDER_LABEL = { pending: 'Menunggu konfirmasi', paid: 'Aktif', rejected: 'Ditolak', cancelled: 'Dibatalkan' };
+  const ORDER_LABEL = { unpaid: 'Belum dibayar', pending: 'Menunggu konfirmasi', paid: 'Aktif', rejected: 'Ditolak', cancelled: 'Dibatalkan' };
+  const X_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+  // Perkecil foto di browser sebelum diunggah (hemat kuota dan muat di batas server).
+  function shrink(file, maxSide, q) {
+    return new Promise((ok, no) => {
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = () => {
+        const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', q));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); no(new Error('File itu bukan foto yang bisa dibaca.')); };
+      img.src = url;
+    });
+  }
+  async function refreshMe() { const r = await api('/api/me'); if (r.ok) { me = r.j; renderQuota(); renderAcct(); } }
 
   async function openPlans() {
-    const r = await api('/api/me'); if (r.ok) { me = r.j; renderQuota(); renderAcct(); }
+    await refreshMe();
     const plans = me.plans.map((p) => `
       <div class="plan">
         <strong>${esc(p.name)}</strong>
         <div class="p-price">${p.pct ? `<s>${idr(p.base)}</s>` : ''}${idr(p.final)}${p.pct ? `<em>-${p.pct}%</em>` : ''}</div>
         <div class="p-meta">${p.dailyQuota} token per hari · ${p.days} hari${p.pct && p.discountUntil ? ' · diskon sampai ' + fmtDate(p.discountUntil) : ''}</div>
-        <button type="button" data-plan="${esc(p.id)}">Pesan</button>
+        <button type="button" data-plan="${esc(p.id)}">Beli</button>
       </div>`).join('');
-    const orders = me.orders.length ? `<ul class="m-list">${me.orders.slice(0, 4).map((o) => `<li><span>${esc(o.planName)} · ${idr(o.amount)}</span><b>${ORDER_LABEL[o.status] || o.status}${o.status === 'pending' ? ` <a href="#" data-cancel="${esc(o.id)}">batal</a>` : ''}</b></li>`).join('')}</ul>` : '';
+    const orders = me.orders.length ? `<ul class="m-list">${me.orders.slice(0, 5).map((o) => `<li><span>${esc(o.planName)} · ${idr(o.amount)}</span><b>${ORDER_LABEL[o.status] || o.status}${o.status === 'unpaid' ? ` <a href="#" data-pay="${esc(o.id)}">bayar</a>` : ''}${o.status === 'unpaid' || o.status === 'pending' ? ` <a href="#" data-cancel="${esc(o.id)}">batal</a>` : ''}</b></li>`).join('')}</ul>` : '';
     const bg = modal(`
-      <button class="icon-btn m-close" type="button" data-close aria-label="Tutup"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <button class="icon-btn m-close" type="button" data-close aria-label="Tutup">${X_ICON}</button>
       <h3>Tambah kuota</h3>
       <p class="m-sub">Akun gratis dapat kuota harian tetap. Paket berbayar menaikkan kuota harianmu.</p>
-      <div class="plans">${plans || '<p class="m-sub">Belum ada paket yang dibuka.</p>'}</div>
-      <p class="note-box" id="payInfo" hidden></p>${orders}`);
+      <div class="plans">${plans || '<p class="m-sub">Belum ada paket yang dibuka.</p>'}</div>${orders}`);
     bg.querySelectorAll('[data-plan]').forEach((b) => b.addEventListener('click', async () => {
       b.disabled = true;
       const r = await api('/api/account', { action: 'order', planId: b.dataset.plan });
-      const box = bg.querySelector('#payInfo'); box.hidden = false;
-      if (r.ok) { box.innerHTML = `<b>Pesanan dibuat: ${esc(r.j.order.planName)} · ${idr(r.j.order.amount)}</b>\n${esc(me.payment.instructions)}`; }
-      else { box.textContent = r.j.error || 'Gagal membuat pesanan.'; b.disabled = false; }
+      if (r.ok) { await refreshMe(); payPanel(r.j.order); }
+      else { toast(r.j.error || 'Gagal membuat pesanan.'); b.disabled = false; }
     }));
+    bg.querySelectorAll('[data-pay]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); const o = me.orders.find((x) => x.id === a.dataset.pay); if (o) payPanel(o); }));
     bg.querySelectorAll('[data-cancel]').forEach((a) => a.addEventListener('click', async (e) => { e.preventDefault(); await api('/api/account', { action: 'cancel_order', id: a.dataset.cancel }); openPlans(); }));
+  }
+
+  // Langkah pembayaran: tujuan transfer + unggah foto bukti.
+  async function payPanel(order) {
+    const pm = me.payment || {};
+    const rows = [];
+    if (pm.dana) rows.push(['DANA', pm.dana]);
+    if (pm.gopay) rows.push(['GoPay', pm.gopay]);
+    if (pm.holder) rows.push(['Atas nama', pm.holder]);
+    const sent = order.hasProof;
+    const bg = modal(`
+      <button class="icon-btn m-close" type="button" data-close aria-label="Tutup">${X_ICON}</button>
+      <h3>Bayar ${esc(order.planName)}</h3>
+      <p class="m-sub">Transfer tepat <b style="color:var(--text)">${idr(order.amount)}</b>, lalu unggah foto bukti transfernya.</p>
+      ${rows.length || pm.hasQris ? `<ul class="m-list" style="margin-top:0">${rows.map(([k, v]) => `<li><span>${esc(k)}</span><b>${esc(v)}${k !== 'Atas nama' ? ` <a href="#" data-copy="${esc(v)}">salin</a>` : ''}</b></li>`).join('')}</ul>` : '<p class="note-box">Admin belum mengisi tujuan pembayaran. Coba lagi nanti.</p>'}
+      ${pm.hasQris ? '<div id="qrisBox" class="qris">Memuat QRIS…</div>' : ''}
+      ${pm.instructions ? `<p class="note-box">${esc(pm.instructions)}</p>` : ''}
+      <div class="proof">
+        <label>${sent ? 'Bukti sudah terkirim. Kamu bisa menggantinya:' : 'Foto bukti transfer'}</label>
+        <input type="file" id="proofFile" accept="image/*" hidden>
+        <img id="proofPrev" alt="Pratinjau bukti" hidden>
+        <p class="gate-msg" id="proofMsg" hidden></p>
+        <div class="gate-actions"><button class="btn" id="proofPick" type="button">${sent ? 'Ganti foto' : 'Pilih foto bukti'}</button><button class="btn primary" id="proofSend" type="button" disabled>Kirim bukti</button></div>
+        ${sent ? '<p class="m-sub" style="margin:12px 0 0">Menunggu konfirmasi admin. Kuotamu naik setelah dikonfirmasi.</p>' : ''}
+      </div>`);
+    bg.querySelectorAll('[data-copy]').forEach((a) => a.addEventListener('click', async (e) => { e.preventDefault(); try { await navigator.clipboard.writeText(a.dataset.copy); a.textContent = 'tersalin'; } catch { a.textContent = 'gagal'; } }));
+    if (pm.hasQris) realFetch('/api/account?view=qris').then((r) => r.json()).then((j) => { const q = bg.querySelector('#qrisBox'); if (q) q.innerHTML = j.image ? `<img src="${j.image}" alt="QRIS">` : ''; }).catch(() => {});
+    let data = null;
+    const msg = bg.querySelector('#proofMsg'), send = bg.querySelector('#proofSend'), prev = bg.querySelector('#proofPrev');
+    bg.querySelector('#proofPick').onclick = () => bg.querySelector('#proofFile').click();
+    bg.querySelector('#proofFile').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      msg.hidden = true;
+      try { data = await shrink(f, 1200, 0.72); prev.src = data; prev.hidden = false; send.disabled = false; }
+      catch (err) { msg.textContent = err.message; msg.hidden = false; }
+    };
+    send.onclick = async () => {
+      send.disabled = true; send.textContent = 'Mengirim…';
+      const r = await api('/api/account', { action: 'proof', id: order.id, image: data });
+      if (r.ok) { await refreshMe(); modal(`<button class="icon-btn m-close" type="button" data-close aria-label="Tutup">${X_ICON}</button><h3>Bukti terkirim</h3><p class="m-sub">Admin akan memeriksa pembayaranmu. Kuota naik otomatis setelah dikonfirmasi. Statusnya bisa dilihat di menu Tambah kuota.</p><div class="gate-actions"><button class="btn primary" data-close type="button">Oke</button></div>`); }
+      else { msg.textContent = r.j.error || 'Gagal mengirim bukti.'; msg.hidden = false; send.disabled = false; send.textContent = 'Kirim bukti'; }
+    };
   }
   $('#upgradeBtn').addEventListener('click', openPlans);
 

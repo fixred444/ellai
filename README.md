@@ -72,11 +72,11 @@ Halaman: `/masuk` (masuk & daftar), `/` (chat, wajib login), `/admin` (khusus ad
 **Panel admin** (`/admin`):
 - *Pengguna*: bekukan, nonaktifkan karena usia, minta verifikasi, aktifkan kembali, tandai terverifikasi, atur batas kuota khusus, reset pemakaian, beri/cabut paket, hapus akun.
 - *Banding*: akun yang beku/nonaktif/butuh verifikasi melihat layar khusus berisi formulir banding atau verifikasi. Admin menyetujui (akun aktif lagi) atau menolak dengan catatan.
-- *Pembayaran*: pengguna memesan paket Mingguan/Bulanan/Tahunan, admin mengonfirmasi setelah uang masuk, lalu paket aktif dan kuota harian naik.
-- *Harga & kuota*: ubah harga, diskon (persen + tanggal berakhir), kuota pelanggan, kuota gratis, biaya token tiap tingkatan, usia minimum daftar, dan teks petunjuk pembayaran.
+- *Pembayaran*: pengguna menekan **Beli**, melihat nomor DANA/GoPay dan foto QRIS, lalu wajib mengunggah foto bukti transfer. Admin membuka foto buktinya, menekan Konfirmasi, dan paket aktif (kuota harian naik). Konfirmasi ditolak kalau bukti belum diunggah.
+- *Harga & kuota*: ubah nomor DANA, nomor GoPay, nama penerima, dan foto QRIS, juga harga, diskon (persen + tanggal berakhir), kuota pelanggan, kuota gratis, biaya token tiap tingkatan, usia minimum daftar, dan teks petunjuk pembayaran.
 - *Log*: riwayat tindakan admin.
 
-Pembayaran saat ini manual (pengguna transfer, admin konfirmasi). Payment gateway otomatis (Midtrans/Xendit) belum dipasang.
+Pembayaran saat ini manual (pengguna transfer dan unggah bukti, admin konfirmasi). Foto QRIS dan bukti disimpan di database (dikompres di browser, maks. sekitar 330 KB per foto). Payment gateway otomatis (Midtrans/Xendit) belum dipasang.
 
 ## Jalankan lokal
 

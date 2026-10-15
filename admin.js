@@ -6,9 +6,23 @@
   const dt = (t) => t ? new Date(t).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '–';
   const d = (t) => t ? new Date(t).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–';
   const STATUS = { active: 'Aktif', frozen: 'Dibekukan', deactivated: 'Nonaktif (usia)', needs_verification: 'Butuh verifikasi' };
-  const OSTAT = { pending: 'Menunggu', paid: 'Lunas', rejected: 'Ditolak', cancelled: 'Dibatalkan' };
+  const OSTAT = { unpaid: 'Belum bayar', pending: 'Menunggu', paid: 'Lunas', rejected: 'Ditolak', cancelled: 'Dibatalkan' };
   const TSTAT = { open: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
   const badge = (cls, txt) => `<span class="badge b-${cls}">${esc(txt)}</span>`;
+  const OSTAT_X = { unpaid: 'Belum bayar' };
+  function shrink(file, maxSide, q) {
+    return new Promise((ok, no) => {
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = () => {
+        const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', q));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); no(new Error('File bukan gambar yang bisa dibaca.')); };
+      img.src = url;
+    });
+  }
   let view = 'overview', users = [], userQuery = '', userFilter = '';
 
   let tt = 0;
@@ -135,13 +149,23 @@
   /* ---------- pembayaran ---------- */
   async function orders(el) {
     const list = (await api('orders')).orders;
-    el.innerHTML = `<h1>Pembayaran</h1><p class="lead">Pesanan paket dari pengguna. Setelah pembayaran masuk, konfirmasi agar paketnya aktif.</p>
+    el.innerHTML = `<h1>Pembayaran</h1><p class="lead">Pesanan paket dari pengguna. Cek foto bukti transfer, lalu konfirmasi agar paketnya aktif.</p>
       <div class="tablewrap"><table><thead><tr><th>Pengguna</th><th>Paket</th><th class="num">Nominal</th><th>Status</th><th>Dipesan</th><th></th></tr></thead><tbody>
       ${list.length ? list.map((o) => `<tr><td>${esc(o.userName)}<span class="sm">${esc(o.userEmail)}</span></td><td>${esc(o.planName)}<span class="sm">${o.days} hari</span></td>
-        <td class="num">${idr(o.amount)}${o.discountPct ? `<span class="sm">diskon ${o.discountPct}%</span>` : ''}</td><td>${badge(o.status, OSTAT[o.status] || o.status)}</td><td>${dt(o.createdAt)}</td>
-        <td>${o.status === 'pending' ? `<button class="btn primary sm" data-o="${esc(o.id)}" data-d="confirm">Konfirmasi</button> <button class="btn danger sm" data-o="${esc(o.id)}" data-d="reject">Tolak</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Belum ada pesanan.</td></tr>'}</tbody></table></div>`;
+        <td class="num">${idr(o.amount)}${o.discountPct ? `<span class="sm">diskon ${o.discountPct}%</span>` : ''}</td><td>${badge(o.status === 'unpaid' ? 'pending' : o.status, OSTAT[o.status] || o.status)}${o.status === 'unpaid' ? '<span class="sm">belum ada bukti</span>' : ''}</td><td>${dt(o.createdAt)}</td>
+        <td>${o.hasProof ? `<button class="btn sm" data-proof="${esc(o.id)}">Lihat bukti</button> ` : ''}${o.status === 'pending' ? `<button class="btn primary sm" data-o="${esc(o.id)}" data-d="confirm">Konfirmasi</button> ` : ''}${o.status === 'pending' || o.status === 'unpaid' ? `<button class="btn danger sm" data-o="${esc(o.id)}" data-d="reject">Tolak</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Belum ada pesanan.</td></tr>'}</tbody></table></div>`;
+    el.querySelectorAll('[data-proof]').forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await api('proof&id=' + encodeURIComponent(b.dataset.proof));
+        openModal(`<h3>Bukti transfer</h3><p class="sub">${esc(r.order.userName)} · ${esc(r.order.planName)} · ${idr(r.order.amount)}</p>
+          ${r.image ? `<img src="${r.image}" alt="Bukti transfer" style="max-width:100%;max-height:70vh;display:block;margin:0 auto;border:1px solid var(--line);border-radius:8px">` : '<p class="muted">Foto tidak ditemukan.</p>'}
+          <div class="acts"><span class="grow"></span><button class="btn" data-x>Tutup</button></div>`);
+      } catch (e) { toast(e.message); }
+      b.disabled = false;
+    });
     el.querySelectorAll('[data-o]').forEach((b) => b.onclick = async () => {
-      if (b.dataset.d === 'confirm' && !confirm('Pembayaran sudah diterima? Paket akan langsung aktif.')) return;
+      if (b.dataset.d === 'confirm' && !confirm('Pastikan nominal di bukti sesuai. Paket akan langsung aktif. Lanjut?')) return;
       b.disabled = true;
       try { await api(null, { action: 'order', id: b.dataset.o, decision: b.dataset.d }); toast('Diproses.'); go('orders'); badges(); } catch (e) { toast(e.message); b.disabled = false; }
     });
@@ -168,22 +192,39 @@
         <label class="f">El Max (token/pesan)<input id="cMax" type="number" min="1" value="${c.costs.max}"></label>
         <label class="f">Usia minimum daftar<input id="cAge" type="number" min="0" max="30" value="${c.minAge}"></label>
       </div>
+      <h2>Tujuan pembayaran</h2>
+      <div class="grid2">
+        <label class="f">Nama penerima<input id="cHolder" maxlength="60" value="${esc(c.payment.holder)}" placeholder="Nama di akun DANA/GoPay"></label>
+        <label class="f">Nomor DANA<input id="cDana" inputmode="tel" maxlength="25" value="${esc(c.payment.dana)}" placeholder="08xxxxxxxxxx"></label>
+        <label class="f">Nomor GoPay<input id="cGopay" inputmode="tel" maxlength="25" value="${esc(c.payment.gopay)}" placeholder="08xxxxxxxxxx"></label>
+      </div>
+      <div class="plan-row qris-row" style="margin-top:12px"><h3>Foto QRIS</h3>
+        <div id="qBox" class="muted" style="margin-bottom:10px">${c.payment.hasQris ? 'Memuat…' : 'Belum ada foto QRIS.'}</div>
+        <div class="acts" style="margin:0"><input type="file" id="qFile" accept="image/*" hidden><button class="btn sm" id="qPick" type="button">${c.payment.hasQris ? 'Ganti foto QRIS' : 'Unggah foto QRIS'}</button>${c.payment.hasQris ? '<button class="btn danger sm" id="qDel" type="button">Hapus</button>' : ''}</div>
+        <p class="muted" style="margin:8px 0 0;font-size:13px">Foto langsung tersimpan saat dipilih (tidak perlu menekan Simpan perubahan).</p></div>
       <h2>Petunjuk pembayaran</h2>
-      <label class="f">Teks ini tampil ke pengguna setelah memesan (nomor rekening, e-wallet, dll.)<textarea id="cPay" maxlength="1500">${esc(c.payment.instructions)}</textarea></label>
+      <label class="f">Teks tambahan yang tampil ke pembeli<textarea id="cPay" maxlength="1500">${esc(c.payment.instructions)}</textarea></label>
       <div class="savebar"><button class="btn primary" id="save">Simpan perubahan</button></div>`;
-    const calc = () => el.querySelectorAll('.plan-row').forEach((r) => {
+    const calc = () => el.querySelectorAll(".plan-row[data-p]").forEach((r) => {
       const price = +r.querySelector('[data-k=price]').value || 0, pct = +r.querySelector('[data-k=discountPct]').value || 0;
       r.querySelector('.final').innerHTML = pct ? `Harga yang dibayar pengguna: <b>${idr(Math.round(price * (1 - pct / 100)))}</b> (dari ${idr(price)})` : `Harga yang dibayar pengguna: <b>${idr(price)}</b>`;
     });
     el.addEventListener('input', calc); calc();
+    if (c.payment.hasQris) api('qris').then((r) => { $('#qBox').innerHTML = r.image ? `<img src="${r.image}" alt="QRIS" style="max-width:220px;border:1px solid var(--line);border-radius:8px;display:block">` : 'Belum ada foto QRIS.'; }).catch(() => {});
+    $('#qPick').onclick = () => $('#qFile').click();
+    $('#qFile').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try { await api(null, { action: 'qris', image: await shrink(f, 1000, 0.85) }); toast('Foto QRIS disimpan.'); go('config'); } catch (err) { toast(err.message); }
+    };
+    if ($('#qDel')) $('#qDel').onclick = async () => { if (!confirm('Hapus foto QRIS?')) return; try { await api(null, { action: 'qris', image: null }); toast('Dihapus.'); go('config'); } catch (err) { toast(err.message); } };
     $('#save').onclick = async (e) => {
       const b = e.currentTarget; b.disabled = true;
-      const plans = [...el.querySelectorAll('.plan-row')].map((r) => {
+      const plans = [...el.querySelectorAll('.plan-row[data-p]')].map((r) => {
         const g = (k) => r.querySelector(`[data-k=${k}]`);
         return { id: r.dataset.p, active: g('active').checked, price: g('price').value, discountPct: g('discountPct').value, discountUntil: g('discountUntil').value ? new Date(g('discountUntil').value).toISOString() : null, dailyQuota: g('dailyQuota').value };
       });
       try {
-        await api(null, { action: 'config', plans, freeQuota: $('#cFree').value, minAge: $('#cAge').value, costs: { lite: $('#cLite').value, pro: $('#cPro').value, max: $('#cMax').value }, payment: { instructions: $('#cPay').value } });
+        await api(null, { action: 'config', plans, freeQuota: $('#cFree').value, minAge: $('#cAge').value, costs: { lite: $('#cLite').value, pro: $('#cPro').value, max: $('#cMax').value }, payment: { instructions: $('#cPay').value, holder: $('#cHolder').value, dana: $('#cDana').value, gopay: $('#cGopay').value } });
         toast('Perubahan disimpan.');
       } catch (err) { toast(err.message); }
       b.disabled = false;
