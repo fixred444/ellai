@@ -4,6 +4,10 @@ const C = require('../lib/core');
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 const ADMIN_EMAIL = () => C.normEmail(process.env.ADMIN_EMAIL);
+const crypto = require('crypto');
+const Mail = require('../lib/mail');
+const OTP_MINUTES = 10, OTP_MAX_TRIES = 5, RESEND_SECONDS = 60;
+const otpHash = (email, code) => crypto.createHmac('sha256', process.env.SESSION_SECRET || 'dev-only-secret-change-me').update(email + ':' + code).digest('hex');
 
 async function limited(key, max, ttl) {
   const n = await db.incrby(key, 1, ttl);
@@ -20,6 +24,54 @@ module.exports = async function handler(req, res) {
     if (b.action === 'logout') { C.endSession(req, res); return C.send(res, 200, { ok: true }); }
 
     const email = C.normEmail(b.email);
+
+    // ---------- lupa kata sandi: kirim kode OTP ke email ----------
+    if (b.action === 'forgot') {
+      if (!EMAIL_RE.test(email)) return C.send(res, 400, { error: 'Alamat email tidak valid.', field: 'email' });
+      if (await limited('rl:forgot:ip:' + ip, 10, 3600)) return C.send(res, 429, { error: 'Terlalu banyak permintaan. Coba lagi nanti.' });
+      const generic = { ok: true, resendIn: RESEND_SECONDS, message: 'Jika email itu terdaftar, kode 6 angka sudah dikirim. Cek juga folder spam.' };
+      const mail = await Mail.getMailConfig();
+      if (!mail.ready) return C.send(res, 503, { error: 'Fitur reset kata sandi belum aktif. Hubungi admin El Ai.' });
+      // Batas per email dicek sebelum mengetahui apakah email terdaftar, supaya jawabannya tidak membocorkan daftar akun.
+      if (await limited('rl:forgot:email:' + email, 5, 3600)) return C.send(res, 429, { error: 'Terlalu banyak permintaan kode untuk email ini. Coba lagi dalam 1 jam.' });
+      const u = await C.userByEmail(email);
+      // Akun admin dikendalikan lewat environment variable, jadi tidak bisa direset di sini.
+      if (!u || u.role === 'admin' || email === ADMIN_EMAIL()) return C.send(res, 200, generic);
+      const prev = await db.get('otp:' + email);
+      if (prev && Date.now() - prev.sentAt < RESEND_SECONDS * 1000) return C.send(res, 200, generic);
+      const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      await db.set('otp:' + email, { hash: otpHash(email, code), exp: Date.now() + OTP_MINUTES * 60000, tries: 0, sentAt: Date.now() });
+      try { await Mail.sendMail({ to: email, ...Mail.otpEmail(u.name, code, OTP_MINUTES) }); }
+      catch (e) { await db.del('otp:' + email); console.error('otp mail error', e.message); return C.send(res, 502, { error: 'Email kode gagal dikirim. Hubungi admin El Ai.' }); }
+      return C.send(res, 200, generic);
+    }
+
+    // ---------- atur ulang kata sandi dengan kode OTP ----------
+    if (b.action === 'reset') {
+      const code = String(b.otp || '').replace(/\s/g, '');
+      const newPw = String(b.password || '');
+      if (!EMAIL_RE.test(email)) return C.send(res, 400, { error: 'Alamat email tidak valid.', field: 'email' });
+      if (!/^\d{6}$/.test(code)) return C.send(res, 400, { error: 'Kode harus 6 angka.', field: 'otp' });
+      if (newPw.length < 8 || newPw.length > 100) return C.send(res, 400, { error: 'Kata sandi baru 8–100 karakter.', field: 'password' });
+      if (await limited('rl:reset:ip:' + ip, 20, 3600)) return C.send(res, 429, { error: 'Terlalu banyak percobaan. Coba lagi nanti.' });
+      const bad = { error: 'Kode salah atau sudah kedaluwarsa. Minta kode baru.', field: 'otp' };
+      const rec = await db.get('otp:' + email);
+      if (!rec || rec.exp < Date.now()) return C.send(res, 400, bad);
+      if (rec.tries >= OTP_MAX_TRIES) { await db.del('otp:' + email); return C.send(res, 400, bad); }
+      const a = Buffer.from(rec.hash), c2 = Buffer.from(otpHash(email, code));
+      if (a.length !== c2.length || !crypto.timingSafeEqual(a, c2)) {
+        rec.tries += 1; await db.set('otp:' + email, rec);
+        return C.send(res, 400, { ...bad, error: `Kode salah. Sisa percobaan: ${Math.max(0, OTP_MAX_TRIES - rec.tries)}.` });
+      }
+      const u = await C.userByEmail(email);
+      if (!u || u.role === 'admin') { await db.del('otp:' + email); return C.send(res, 400, bad); }
+      u.passwordHash = C.hashPassword(newPw);
+      u.pwv = (u.pwv || 0) + 1;   // semua sesi lama keluar
+      await C.saveUser(u);
+      await db.del('otp:' + email);
+      return C.send(res, 200, { ok: true });
+    }
+
     const password = String(b.password || '');
     if (!EMAIL_RE.test(email)) return C.send(res, 400, { error: 'Alamat email tidak valid.', field: 'email' });
     if (password.length < 8 || password.length > 100) return C.send(res, 400, { error: 'Kata sandi 8–100 karakter.', field: 'password' });
@@ -39,7 +91,7 @@ module.exports = async function handler(req, res) {
       const u = await C.createUser({ name, email, passwordHash: C.hashPassword(password), birth });
       u.lastLoginAt = Date.now();
       await C.saveUser(u);
-      C.startSession(req, res, u.id);
+      C.startSession(req, res, u);
       return C.send(res, 200, { ok: true, user: C.publicUser(u) });
     }
 
@@ -60,7 +112,7 @@ module.exports = async function handler(req, res) {
       }
       u.lastLoginAt = Date.now();
       await C.saveUser(u);
-      C.startSession(req, res, u.id);
+      C.startSession(req, res, u);
       return C.send(res, 200, { ok: true, user: C.publicUser(u) });
     }
 

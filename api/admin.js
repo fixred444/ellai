@@ -2,6 +2,7 @@
 //              POST /api/admin { action: ... }
 const db = require('../lib/db');
 const C = require('../lib/core');
+const Mail = require('../lib/mail');
 
 const STATUS = ['active', 'frozen', 'deactivated', 'needs_verification'];
 const adminView = (u, usage) => ({
@@ -27,6 +28,7 @@ module.exports = async function handler(req, res) {
       const view = String(req.query.view || 'overview');
       const cfg = await C.getConfig();
       if (view === 'config') return C.send(res, 200, { config: cfg });
+      if (view === 'email') return C.send(res, 200, { mail: await Mail.getMailConfig() });
       if (view === 'qris') return C.send(res, 200, { image: (await db.get('qris')) || null });
       if (view === 'proof') {
         const o = await db.get('order:' + String(req.query.id || ''));
@@ -140,6 +142,26 @@ module.exports = async function handler(req, res) {
       await db.set('order:' + o.id, o);
       await C.audit(admin, 'order_' + o.status, { target: o.userEmail, plan: o.planName, amount: o.amount });
       return C.send(res, 200, { ok: true });
+    }
+
+    // ================= email pengirim (OTP) =================
+    if (b.action === 'email') {
+      const email = C.normEmail(b.email), name = String(b.name || '').trim().slice(0, 40) || 'El Ai';
+      const pw = String(b.appPassword || '').replace(/\s/g, '');
+      if (!/^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/.test(email)) return C.send(res, 400, { error: 'Alamat email pengirim tidak valid.' });
+      if (pw && !/^[a-zA-Z]{16}$/.test(pw)) return C.send(res, 400, { error: 'App Password Gmail berisi 16 huruf (spasi diabaikan). Itu bukan kata sandi Gmail biasa.' });
+      const cur = await Mail.getMailConfig();
+      if (!pw && !cur.hasPassword) return C.send(res, 400, { error: 'Isi App Password Gmail.' });
+      await Mail.saveMailConfig({ email, name, appPassword: pw });
+      await C.audit(admin, 'email_set', { target: email });
+      return C.send(res, 200, { ok: true, mail: await Mail.getMailConfig() });
+    }
+    if (b.action === 'email_clear') { await Mail.clearMailConfig(); await C.audit(admin, 'email_clear', {}); return C.send(res, 200, { ok: true }); }
+    if (b.action === 'email_test') {
+      const to = C.normEmail(b.to) || admin.email;
+      try { await Mail.sendMail({ to, subject: 'Tes email El Ai', text: 'Email pengirim El Ai berfungsi. Kode OTP reset kata sandi akan dikirim dari alamat ini.', html: '<p style="font-family:Arial">Email pengirim <b>El Ai</b> berfungsi. Kode OTP reset kata sandi akan dikirim dari alamat ini.</p>' }); }
+      catch (e) { return C.send(res, 400, { error: e.message }); }
+      return C.send(res, 200, { ok: true, to });
     }
 
     // ================= foto QRIS =================
