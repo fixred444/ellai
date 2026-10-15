@@ -81,3 +81,15 @@ input[type="date"] { min-height: 44px; }
   .panel { place-items: start center; padding-top: 40px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.forgot { margin: -6px 0 18px; text-align: right; }
+.forgot[hidden], .resend[hidden] { display: none; }
+.forgot button, .resend button { background: none; border: 0; padding: 0; font-size: 14px; color: var(--accent); font-weight: 600; cursor: pointer; }
+.forgot button:hover, .resend button:hover:not(:disabled) { text-decoration: underline; }
+.resend { margin: 18px 0 0; text-align: center; }
+.resend button:disabled { color: var(--muted); cursor: default; font-weight: 500; }
+.otp-input { font-family: var(--mono); font-size: 22px; letter-spacing: .35em; text-align: center; }
+.form-ok { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 8px; color: var(--accent); font-size: 14.5px; }
+.form-ok[hidden] { display: none; }
+input[readonly] { color: var(--muted); }
+.tabs[hidden] { display: none; }

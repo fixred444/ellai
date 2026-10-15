@@ -67,6 +67,8 @@ Halaman: `/masuk` (masuk & daftar), `/` (chat, wajib login), `/admin` (khusus ad
 2. `SESSION_SECRET` = teks acak panjang (min. 16 karakter).
 3. `ADMIN_EMAIL` dan `ADMIN_PASSWORD` = login akun admin. Ganti kata sandi admin cukup dengan mengubah variabel ini lalu redeploy.
 
+**Lupa kata sandi**: di halaman masuk ada tautan "Lupa kata sandi?". Pengguna memasukkan email, menerima kode 6 angka (berlaku 10 menit, maks. 5 kali salah, kirim ulang tiap 60 detik), lalu mengatur kata sandi baru. Setelah direset, semua sesi login lama otomatis keluar. Fitur ini aktif setelah admin mengisi email pengirim di panel admin. Akun admin tidak bisa direset lewat OTP: ganti `ADMIN_PASSWORD` di Vercel lalu redeploy.
+
 **Kuota**: tiap akun gratis dapat 100 token/hari (reset 00.00 WIB). El Lite memakai 5 token per pesan, El Pro 10, El Max 15. Dicek di server (`api/chat.js`), jadi tidak bisa dilewati dari browser. Pesan yang gagal di sisi AI otomatis dikembalikan tokennya.
 
 **Panel admin** (`/admin`):
@@ -74,6 +76,7 @@ Halaman: `/masuk` (masuk & daftar), `/` (chat, wajib login), `/admin` (khusus ad
 - *Banding*: akun yang beku/nonaktif/butuh verifikasi melihat layar khusus berisi formulir banding atau verifikasi. Admin menyetujui (akun aktif lagi) atau menolak dengan catatan.
 - *Pembayaran*: pengguna menekan **Beli**, melihat nomor DANA/GoPay dan foto QRIS, lalu wajib mengunggah foto bukti transfer. Admin membuka foto buktinya, menekan Konfirmasi, dan paket aktif (kuota harian naik). Konfirmasi ditolak kalau bukti belum diunggah.
 - *Harga & kuota*: ubah nomor DANA, nomor GoPay, nama penerima, dan foto QRIS, juga harga, diskon (persen + tanggal berakhir), kuota pelanggan, kuota gratis, biaya token tiap tingkatan, usia minimum daftar, dan teks petunjuk pembayaran.
+- *Email*: isi Gmail pengirim dan App Password (disimpan terenkripsi, tidak pernah ditampilkan lagi), lalu tekan "Kirim email tes". Dipakai untuk mengirim kode OTP reset kata sandi.
 - *Log*: riwayat tindakan admin.
 
 Pembayaran saat ini manual (pengguna transfer dan unggah bukti, admin konfirmasi). Foto QRIS dan bukti disimpan di database (dikompres di browser, maks. sekitar 330 KB per foto). Payment gateway otomatis (Midtrans/Xendit) belum dipasang.

@@ -47,7 +47,7 @@
     document.querySelectorAll('#nav button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.v === v));
     document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.v === v) b.setAttribute('aria-current', 'page'); });
     const el = $('#view'); el.innerHTML = '<p class="muted">Memuat…</p>';
-    try { await ({ overview, users: usersView, tickets, orders, config, log })[v](el); } catch (e) { if (e.message !== 'auth' && e.message !== 'forbidden') el.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
+    try { await ({ overview, users: usersView, tickets, orders, config, email: emailView, log })[v](el); } catch (e) { if (e.message !== 'auth' && e.message !== 'forbidden') el.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
   }
   async function badges() {
     try {
@@ -229,6 +229,39 @@
       } catch (err) { toast(err.message); }
       b.disabled = false;
     };
+  }
+
+  /* ---------- email pengirim (OTP reset kata sandi) ---------- */
+  async function emailView(el) {
+    const m = (await api('email')).mail;
+    const state = m.ready ? badge('active', 'Aktif') : m.needsReenter ? badge('frozen', 'Perlu isi ulang') : badge('pending', 'Belum diatur');
+    el.innerHTML = `<h1>Email pengirim</h1><p class="lead">Gmail yang dipakai mengirim kode OTP reset kata sandi ke pengguna. Status: ${state}</p>
+      <div class="plan-row"><div class="grid2">
+        <label class="f">Alamat Gmail pengirim<input id="mEmail" type="email" autocomplete="off" value="${esc(m.email)}" placeholder="namakamu@gmail.com"></label>
+        <label class="f">Nama pengirim<input id="mName" maxlength="40" value="${esc(m.name)}" placeholder="El Ai"></label>
+        <label class="f">App Password Gmail<input id="mPass" type="password" autocomplete="new-password" placeholder="${m.hasPassword && !m.needsReenter ? 'Tersimpan. Kosongkan jika tidak diganti' : 'abcd efgh ijkl mnop'}"></label>
+      </div>
+      ${m.needsReenter ? '<p class="muted" style="margin:10px 0 0;color:var(--danger)">App Password tersimpan tidak bisa dibaca lagi (SESSION_SECRET berubah). Isi ulang.</p>' : ''}
+      <div class="acts"><button class="btn primary" id="mSave">Simpan</button><button class="btn" id="mTest" ${m.ready ? '' : 'disabled'}>Kirim email tes ke saya</button>${m.hasPassword ? '<button class="btn danger" id="mClear">Hapus pengaturan</button>' : ''}</div></div>
+      <h2>Cara mendapat App Password Gmail</h2>
+      <ol class="muted" style="margin:0;padding-left:20px;line-height:1.8">
+        <li>Buka <b>myaccount.google.com/security</b> lalu aktifkan <b>Verifikasi 2 Langkah</b>.</li>
+        <li>Buka <b>myaccount.google.com/apppasswords</b>.</li>
+        <li>Beri nama (misalnya El Ai), lalu klik <b>Buat</b>.</li>
+        <li>Salin kode 16 huruf yang muncul dan tempel di kolom App Password di atas. Itu bukan kata sandi Gmail biasa.</li>
+      </ol>
+      <p class="muted" style="margin-top:14px;font-size:13.5px">App Password disimpan terenkripsi dan tidak pernah ditampilkan lagi. Gmail membatasi sekitar 500 email per hari untuk akun biasa.</p>`;
+    $('#mSave').onclick = async (e) => {
+      const b = e.currentTarget; b.disabled = true;
+      try { await api(null, { action: 'email', email: $('#mEmail').value, name: $('#mName').value, appPassword: $('#mPass').value }); toast('Tersimpan. Coba kirim email tes.'); go('email'); }
+      catch (err) { toast(err.message); b.disabled = false; }
+    };
+    $('#mTest').onclick = async (e) => {
+      const b = e.currentTarget; b.disabled = true; b.textContent = 'Mengirim…';
+      try { const r = await api(null, { action: 'email_test' }); toast('Email tes terkirim ke ' + r.to); } catch (err) { toast(err.message); }
+      b.disabled = false; b.textContent = 'Kirim email tes ke saya';
+    };
+    if ($('#mClear')) $('#mClear').onclick = async () => { if (!confirm('Hapus pengaturan email? Reset kata sandi akan nonaktif.')) return; try { await api(null, { action: 'email_clear' }); toast('Dihapus.'); go('email'); } catch (err) { toast(err.message); } };
   }
 
   /* ---------- log ---------- */

@@ -66,6 +66,12 @@
             <p class="hint">Dipakai untuk memastikan usia minimum pengguna.</p>
             <p class="err"></p>
           </div>
+          <div class="field" data-f="otp" hidden>
+            <label for="otp">Kode dari email</label>
+            <input id="otp" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="6 angka" class="otp-input">
+            <p class="hint" id="otpHint"></p>
+            <p class="err"></p>
+          </div>
           <div class="field" data-f="password">
             <label for="password">Kata sandi</label>
             <div class="pw">
@@ -74,11 +80,14 @@
             </div>
             <p class="err"></p>
           </div>
+          <p class="forgot" id="forgotWrap"><button type="button" id="forgotBtn">Lupa kata sandi?</button></p>
 
+          <p class="form-ok" id="formOk" role="status" hidden></p>
           <p class="form-err" id="formErr" role="alert" hidden></p>
           <button class="submit" id="submit" type="submit">Masuk</button>
         </form>
 
+        <p class="resend" id="resendWrap" hidden><button type="button" id="resendBtn" disabled>Kirim ulang kode</button></p>
         <p class="switch" id="switch">Belum punya akun? <button type="button" id="switchBtn">Daftar gratis</button></p>
       </div>
     </main>
