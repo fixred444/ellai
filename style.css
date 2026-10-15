@@ -323,3 +323,10 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- Konversi foto ke PDF / Word ---------- */
+.tray-convert { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.conv-btn { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.conv-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.dl-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 8px; }
+.dl-btn { display: inline-flex; align-items: center; padding: 9px 18px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 600; text-decoration: none; }

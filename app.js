@@ -315,6 +315,7 @@
       }
 
       const item = { id: uid(), name: file.name, loading: true, kind: isImage ? 'image' : 'text' };
+      if (isImage) item.file = file;
       pending.push(item);
       renderTray();
 
@@ -376,9 +377,17 @@
       box.appendChild(x);
       el.tray.appendChild(box);
     });
+    if (pending.some((a) => a.kind === 'image' && a.file) && !pending.some((a) => a.loading)) {
+      const cv = document.createElement('div');
+      cv.className = 'tray-convert';
+      cv.innerHTML = '<button type="button" class="conv-btn" data-convert="Jadikan PDF">Jadikan PDF</button><button type="button" class="conv-btn" data-convert="Jadikan Word">Jadikan Word</button>';
+      el.tray.appendChild(cv);
+    }
   }
 
   el.tray.addEventListener('click', (e) => {
+    const cv = e.target.closest('[data-convert]');
+    if (cv) { el.input.value = cv.dataset.convert; autosize(); el.form.requestSubmit(); return; }
     const rm = e.target.closest('[data-rm]');
     if (!rm) return;
     pending = pending.filter((a) => a.id !== rm.dataset.rm);
@@ -668,9 +677,174 @@
     scrollDown(true);
   }
 
+  /* ---------- konversi foto -> PDF / Word ---------- */
+  const OCR_PROMPT = 'Salin SEMUA teks yang terlihat pada gambar ini persis seperti aslinya: bahasa, ejaan, angka, serta susunan baris, paragraf, dan daftar dipertahankan. Jangan menambah komentar, penjelasan, atau kalimat pembuka. Jangan memakai blok kode. Jika ada tabel, tulis dengan format | kolom | kolom |. Jika gambar sama sekali tidak berisi tulisan, balas hanya dengan: [TIDAK ADA TEKS]';
+
+  // Deteksi perintah seperti "jadikan pdf", "ubah ke word" (bukan pertanyaan)
+  function convertCommand(text) {
+    const t = (text || '').toLowerCase().trim();
+    if (!t || t.length > 140 || /\?|\b(cara|bagaimana|gimana|kenapa|mengapa|apakah)\b/.test(t)) return null;
+    if (!/\b(jadi|jadikan|jadiin|jd|ubah|ganti|convert|konversi|ke|simpan|buat|bikin|export|ekspor|to)\b/.test(t)) return null;
+    const pdf = /\bpdf\b/.test(t);
+    const word = /\b(word|docx?)\b/.test(t);
+    if (!pdf && !word) return null;
+    return { pdf, word, asImage: /(sebagai gambar|berupa gambar|apa adanya|tanpa ocr|tempel gambar)/.test(t) };
+  }
+
+  async function imageToJpeg(file, maxSide, q) {
+    const { img, url } = await loadImage(file);
+    const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * s));
+    const h = Math.max(1, Math.round(img.naturalHeight * s));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', q));
+    URL.revokeObjectURL(url);
+    if (!blob) throw new Error('decode');
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), w, h };
+  }
+
+  // Minta AI membaca teks pada satu gambar (OCR), hasilnya dikumpulkan sampai selesai
+  async function readTextFromImage(dataUrl, signal) {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: [{ type: 'text', text: OCR_PROMPT }, { type: 'image_url', image_url: { url: dataUrl } }] }], tier }),
+      signal,
+    });
+    if (!res.ok) {
+      let msg = 'Gagal membaca teks pada foto (' + res.status + ').';
+      try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
+      throw new Error(msg);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', out = '', finished = false;
+    while (!finished) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') { finished = true; break; }
+        try {
+          const j = JSON.parse(data);
+          const d = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+          if (d) out += d;
+        } catch {}
+      }
+    }
+    return clean(out).trim();
+  }
+
+  async function handleConvert(text, atts, cmd) {
+    let chat = current();
+    if (!chat) chat = createChat();
+    const imgs = atts.filter((a) => a.kind === 'image' && a.file);
+    const userMsg = { role: 'user', content: text, atts: atts.map((a) => ({ kind: a.kind, name: a.name, thumb: a.kind === 'image' ? a.thumb : undefined })) };
+    chat.messages.push(userMsg);
+    if (chat.messages.length === 1) chat.title = text.length > 42 ? text.slice(0, 42) + '…' : text;
+    chat.updated = Date.now();
+    el.welcome.hidden = true;
+    el.title.textContent = chat.title;
+    el.thread.appendChild(messageEl(userMsg));
+
+    const reply = { role: 'assistant', content: '' };
+    const node = messageEl(reply);
+    const contentEl = node.querySelector('.content');
+    const status = (t) => { contentEl.innerHTML = window.ElMd.render(t); };
+    status('Menyiapkan foto…');
+    el.thread.appendChild(node);
+    scrollDown(true);
+
+    busy = true; syncSend();
+    controller = new AbortController();
+    const made = [];
+    const lines = [];
+    try {
+      let jpgs = null;
+      const getJpgs = async () => {
+        if (!jpgs) { jpgs = []; for (const a of imgs) jpgs.push(await imageToJpeg(a.file, 2200, 0.88)); }
+        return jpgs;
+      };
+      const stamp = new Date().toISOString().slice(0, 10);
+      const mime = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+      const n = imgs.length;
+
+      if (cmd.pdf) {
+        status('Membuat PDF…');
+        const data = window.ElConvert.buildPdf(await getJpgs());
+        made.push({ label: 'PDF', name: 'El-Ai-' + stamp + '.pdf', blob: new Blob([data], { type: mime.pdf }) });
+        lines.push('- **PDF**: ' + n + ' halaman, tiap foto jadi satu halaman.');
+      }
+
+      if (cmd.word) {
+        let data = null, how = '';
+        if (!cmd.asImage) {
+          try {
+            const pages = [];
+            for (let i = 0; i < n; i++) {
+              status('Membaca teks pada foto ' + (i + 1) + ' dari ' + n + '…');
+              pages.push(await readTextFromImage(imgs[i].dataUrl, controller.signal));
+            }
+            const real = pages.map((p) => (/^\[?\s*TIDAK ADA TEKS\s*\]?\.?$/i.test(p) ? '' : p));
+            if (real.some((p) => p.trim())) { data = window.ElConvert.buildDocxFromText(real); how = 'text'; }
+          } catch (err) {
+            if (err && err.name === 'AbortError') throw err;
+            lines.push('- Teks pada foto tidak berhasil dibaca (' + ((err && err.message) || 'gagal') + '), jadi Word dibuat berisi gambar.');
+          }
+        }
+        if (!data) {
+          status('Membuat Word…');
+          data = window.ElConvert.buildDocxFromImages(await getJpgs());
+          how = 'image';
+          if (!cmd.asImage && !lines.some((l) => l.includes('tidak berhasil'))) lines.push('- Tidak ada tulisan yang terbaca di foto, jadi Word dibuat berisi gambar.');
+        }
+        made.push({ label: 'Word', name: 'El-Ai-' + stamp + '.docx', blob: new Blob([data], { type: mime.docx }) });
+        lines.push(how === 'text'
+          ? '- **Word**: berisi teks hasil bacaan foto dan bisa diedit. Hasil bacaan bisa kurang tepat, jadi periksa lagi sebelum dipakai.'
+          : '- **Word**: foto ditempel apa adanya di dokumen.');
+      }
+
+      reply.content = 'Sudah jadi.\n\n' + lines.join('\n') + '\n\nUnduh lewat tombol di bawah. Kalau tombolnya sudah hilang (misalnya setelah halaman dimuat ulang), kirim ulang fotonya untuk membuat file lagi.';
+      status(reply.content);
+
+      const row = document.createElement('div');
+      row.className = 'dl-row';
+      made.forEach((f) => {
+        const a = document.createElement('a');
+        a.className = 'dl-btn';
+        a.href = URL.createObjectURL(f.blob);
+        a.download = f.name;
+        a.textContent = 'Unduh ' + f.label;
+        row.appendChild(a);
+      });
+      node.querySelector('.msg-body').insertBefore(row, node.querySelector('.msg-actions'));
+    } catch (err) {
+      if (err && err.name === 'AbortError') reply.content = 'Konversi dibatalkan.';
+      else reply.content = 'Maaf, foto tidak bisa diubah: ' + ((err && err.message && err.message !== 'decode') ? err.message : 'format foto tidak didukung.');
+      status(reply.content);
+    }
+    chat.messages.push(reply);
+    chat.updated = Date.now();
+    busy = false; controller = null; syncSend();
+    save(); renderSidebar();
+    scrollDown(true);
+  }
+
   /* ---------- chat flow ---------- */
   async function send(text, atts) {
     if (busy) return;
+    const conv = atts.some((a) => a.kind === 'image' && a.file) ? convertCommand(text) : null;
+    if (conv) { handleConvert(text, atts, conv); return; }
     const cmd = atts.length ? null : lightCommand(text);
     if (cmd) { handleLight(text, cmd); return; }
     let chat = current();

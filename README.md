@@ -38,6 +38,14 @@ Di pojok kanan atas ada pemilih tingkatan, seperti Haiku / Sonnet / Opus pada Cl
 
 Pilihan pengguna disimpan di browser. Kalau satu model tidak tersedia di akunmu, server otomatis mencari model lain yang boleh dipakai.
 
+## Ubah foto jadi PDF / Word
+
+Lampirkan foto (maks. 3), lalu ketuk **Jadikan PDF** / **Jadikan Word** di atas kolom ketik, atau ketik "jadikan pdf", "ubah ke word", dll.
+
+- **PDF**: tiap foto jadi satu halaman A4. Dibuat langsung di browser, tanpa API.
+- **Word (.docx)**: AI membaca teks pada foto (OCR) lalu disusun jadi dokumen yang bisa diedit. Jika tidak ada tulisan atau gagal dibaca, foto ditempel apa adanya. Ketik "jadikan word sebagai gambar" untuk memaksa foto ditempel.
+- File hanya tersedia lewat tombol unduh sesaat setelah dibuat.
+
 ## Jalankan lokal
 
 ```bash
