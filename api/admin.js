@@ -27,6 +27,12 @@ module.exports = async function handler(req, res) {
       const view = String(req.query.view || 'overview');
       const cfg = await C.getConfig();
       if (view === 'config') return C.send(res, 200, { config: cfg });
+      if (view === 'qris') return C.send(res, 200, { image: (await db.get('qris')) || null });
+      if (view === 'proof') {
+        const o = await db.get('order:' + String(req.query.id || ''));
+        if (!o) return C.send(res, 404, { error: 'Pesanan tidak ditemukan.' });
+        return C.send(res, 200, { image: (await db.get('proof:' + o.id)) || null, order: o });
+      }
       if (view === 'log') return C.send(res, 200, { log: await db.lrange('audit', 0, 99) });
       if (view === 'users') {
         const users = (await listAll('users', 'user:')).sort((a, b) => b.createdAt - a.createdAt).slice(0, 1000);
@@ -119,8 +125,9 @@ module.exports = async function handler(req, res) {
     // ================= pembayaran =================
     if (b.action === 'order') {
       const o = await db.get('order:' + b.id);
-      if (!o || o.status !== 'pending') return C.send(res, 404, { error: 'Pesanan tidak ditemukan atau sudah diproses.' });
+      if (!o || (o.status !== 'pending' && o.status !== 'unpaid')) return C.send(res, 404, { error: 'Pesanan tidak ditemukan atau sudah diproses.' });
       if (b.decision === 'confirm') {
+        if (!o.hasProof) return C.send(res, 400, { error: 'Pengguna belum mengunggah bukti transfer.' });
         const u = await C.getUser(o.userId);
         if (!u) return C.send(res, 404, { error: 'Pengguna sudah dihapus.' });
         const base = Math.max(Date.now(), C.activeSub(u) ? u.sub.until : 0);
@@ -135,6 +142,19 @@ module.exports = async function handler(req, res) {
       return C.send(res, 200, { ok: true });
     }
 
+    // ================= foto QRIS =================
+    if (b.action === 'qris') {
+      const cfg = await C.getConfig();
+      if (b.image === null) { await db.del('qris'); cfg.payment.hasQris = false; }
+      else {
+        if (!C.validImage(b.image)) return C.send(res, 400, { error: 'Foto QRIS tidak valid atau terlalu besar. Pakai JPG/PNG/WebP.' });
+        await db.set('qris', b.image); cfg.payment.hasQris = true;
+      }
+      await db.set('config', { ...(await db.get('config') || {}), payment: cfg.payment });
+      await C.audit(admin, b.image === null ? 'qris_remove' : 'qris_set', {});
+      return C.send(res, 200, { ok: true });
+    }
+
     // ================= harga, diskon, kuota =================
     if (b.action === 'config') {
       const cur = await C.getConfig();
@@ -142,7 +162,17 @@ module.exports = async function handler(req, res) {
       if (b.freeQuota !== undefined) { const n = intIn(b.freeQuota, 0, 100000); if (n === null) return C.send(res, 400, { error: 'Kuota gratis tidak valid.' }); next.freeQuota = n; }
       if (b.minAge !== undefined) { const n = intIn(b.minAge, 0, 30); if (n === null) return C.send(res, 400, { error: 'Usia minimum tidak valid.' }); next.minAge = n; }
       if (b.costs) for (const k of C.TIERS) if (b.costs[k] !== undefined) { const n = intIn(b.costs[k], 1, 1000); if (n === null) return C.send(res, 400, { error: 'Biaya token tidak valid.' }); next.costs[k] = n; }
-      if (b.payment && typeof b.payment.instructions === 'string') next.payment = { instructions: b.payment.instructions.slice(0, 1500) };
+      if (b.payment) {
+        const pm = { ...cur.payment }, P = b.payment;
+        if (typeof P.instructions === 'string') pm.instructions = P.instructions.slice(0, 1500);
+        for (const k of ['holder', 'dana', 'gopay']) {
+          if (typeof P[k] !== 'string') continue;
+          const v = P[k].trim();
+          if (v.length > 60 || (k !== 'holder' && v && !/^[0-9+\-\s]{6,25}$/.test(v))) return C.send(res, 400, { error: k === 'holder' ? 'Nama penerima terlalu panjang.' : `Nomor ${k.toUpperCase()} tidak valid (angka saja).` });
+          pm[k] = v;
+        }
+        next.payment = pm;
+      }
       if (Array.isArray(b.plans)) {
         next.plans = cur.plans.map((p) => {
           const n = b.plans.find((x) => x && x.id === p.id); if (!n) return p;

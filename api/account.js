@@ -3,6 +3,15 @@ const db = require('../lib/db');
 const C = require('../lib/core');
 
 module.exports = async function handler(req, res) {
+  // GET /api/account?view=qris -> foto QRIS yang diatur admin (hanya untuk yang sudah login)
+  if (req.method === 'GET') {
+    try {
+      const u = await C.authUser(req);
+      if (!u) return C.send(res, 401, { error: 'Belum masuk.', code: 'auth' });
+      if (req.query.view === 'qris') return C.send(res, 200, { image: (await db.get('qris')) || null });
+      return C.send(res, 400, { error: 'Tampilan tidak dikenal.' });
+    } catch (e) { console.error('account get error', e); return C.send(res, 500, { error: 'Terjadi kesalahan di server.' }); }
+  }
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return C.send(res, 405, { error: 'Metode tidak diizinkan.' }); }
   if (!C.sameOrigin(req)) return C.send(res, 403, { error: 'Permintaan ditolak.' });
   try {
@@ -18,10 +27,10 @@ module.exports = async function handler(req, res) {
       if (!plan) return C.send(res, 400, { error: 'Paket tidak ditemukan.' });
       const ids = await db.smembers('uorders:' + u.id);
       const mine = (await db.mget(ids.map((i) => 'order:' + i))).filter(Boolean);
-      if (mine.filter((o) => o.status === 'pending').length >= 3) return C.send(res, 429, { error: 'Kamu masih punya 3 pesanan yang menunggu konfirmasi.' });
+      if (mine.filter((o) => o.status === 'pending' || o.status === 'unpaid').length >= 3) return C.send(res, 429, { error: 'Kamu masih punya 3 pesanan yang belum selesai. Selesaikan atau batalkan dulu.' });
       const price = C.planPrice(plan);
       const o = { id: C.newId('o_'), userId: u.id, userEmail: u.email, userName: u.name, planId: plan.id, planName: plan.name, days: plan.days,
-        dailyQuota: plan.dailyQuota, amount: price.final, basePrice: price.base, discountPct: price.pct, status: 'pending', createdAt: Date.now() };
+        dailyQuota: plan.dailyQuota, amount: price.final, basePrice: price.base, discountPct: price.pct, status: 'unpaid', hasProof: false, createdAt: Date.now() };
       await db.set('order:' + o.id, o);
       await db.sadd('orders', o.id);
       await db.sadd('uorders:' + u.id, o.id);
@@ -30,10 +39,21 @@ module.exports = async function handler(req, res) {
 
     if (b.action === 'cancel_order') {
       const o = await db.get('order:' + b.id);
-      if (!o || o.userId !== u.id || o.status !== 'pending') return C.send(res, 404, { error: 'Pesanan tidak ditemukan.' });
+      if (!o || o.userId !== u.id || (o.status !== 'pending' && o.status !== 'unpaid')) return C.send(res, 404, { error: 'Pesanan tidak ditemukan.' });
       o.status = 'cancelled'; o.resolvedAt = Date.now();
       await db.set('order:' + o.id, o);
       return C.send(res, 200, { ok: true });
+    }
+
+    // ---------- unggah bukti transfer ----------
+    if (b.action === 'proof') {
+      const o = await db.get('order:' + b.id);
+      if (!o || o.userId !== u.id || (o.status !== 'unpaid' && o.status !== 'pending')) return C.send(res, 404, { error: 'Pesanan tidak ditemukan.' });
+      if (!C.validImage(b.image)) return C.send(res, 400, { error: 'Foto bukti tidak valid atau terlalu besar. Pakai foto JPG/PNG/WebP.' });
+      await db.set('proof:' + o.id, b.image);
+      o.hasProof = true; o.status = 'pending'; o.proofAt = Date.now();
+      await db.set('order:' + o.id, o);
+      return C.send(res, 200, { ok: true, order: o });
     }
 
     // ---------- banding / verifikasi ----------
