@@ -1,4 +1,4 @@
-// POST /api/auth  { action: 'signup' | 'login' | 'logout', ... }
+// POST /api/auth  { action: 'signup' | 'verify' | 'signup_resend' | 'login' | 'logout' | 'forgot' | 'reset', ... }
 const db = require('../lib/db');
 const C = require('../lib/core');
 
@@ -72,6 +72,47 @@ module.exports = async function handler(req, res) {
       return C.send(res, 200, { ok: true });
     }
 
+    // ---------- daftar langkah 2: cek kode OTP, baru buat akun ----------
+    if (b.action === 'verify') {
+      const code = String(b.otp || '').replace(/\s/g, '');
+      if (!EMAIL_RE.test(email)) return C.send(res, 400, { error: 'Alamat email tidak valid.', field: 'email' });
+      if (!/^\d{6}$/.test(code)) return C.send(res, 400, { error: 'Kode harus 6 angka.', field: 'otp' });
+      if (await limited('rl:verify:ip:' + ip, 20, 3600)) return C.send(res, 429, { error: 'Terlalu banyak percobaan. Coba lagi nanti.' });
+      const bad = { error: 'Kode salah atau sudah kedaluwarsa. Minta kode baru.', field: 'otp' };
+      const rec = await db.get('signup:' + email);
+      if (!rec || rec.exp < Date.now()) return C.send(res, 400, bad);
+      if (rec.tries >= OTP_MAX_TRIES) { await db.del('signup:' + email); return C.send(res, 400, bad); }
+      const a = Buffer.from(rec.hash), c2 = Buffer.from(otpHash(email, code));
+      if (a.length !== c2.length || !crypto.timingSafeEqual(a, c2)) {
+        rec.tries += 1; await db.set('signup:' + email, rec);
+        return C.send(res, 400, { ...bad, error: `Kode salah. Sisa percobaan: ${Math.max(0, OTP_MAX_TRIES - rec.tries)}.` });
+      }
+      if (email === ADMIN_EMAIL() || (await C.userByEmail(email))) { await db.del('signup:' + email); return C.send(res, 409, { error: 'Email ini sudah terdaftar. Silakan masuk.', field: 'email' }); }
+      const u = await C.createUser({ name: rec.name, email, passwordHash: rec.passwordHash, birth: rec.birth, emailVerified: true });
+      await db.del('signup:' + email);
+      u.lastLoginAt = Date.now();
+      await C.saveUser(u);
+      C.startSession(req, res, u);
+      return C.send(res, 200, { ok: true, user: C.publicUser(u) });
+    }
+
+    // ---------- daftar: kirim ulang kode ----------
+    if (b.action === 'signup_resend') {
+      if (!EMAIL_RE.test(email)) return C.send(res, 400, { error: 'Alamat email tidak valid.', field: 'email' });
+      if (await limited('rl:signup:ip:' + ip, 15, 3600)) return C.send(res, 429, { error: 'Terlalu banyak permintaan. Coba lagi nanti.' });
+      if (await limited('rl:signup:email:' + email, 5, 3600)) return C.send(res, 429, { error: 'Terlalu banyak permintaan kode untuk email ini. Coba lagi dalam 1 jam.' });
+      const rec = await db.get('signup:' + email);
+      if (!rec) return C.send(res, 400, { error: 'Data pendaftaran tidak ditemukan. Isi formulir daftar lagi.', field: 'email' });
+      const wait = Math.ceil((rec.sentAt + RESEND_SECONDS * 1000 - Date.now()) / 1000);
+      if (wait > 0) return C.send(res, 429, { error: `Tunggu ${wait} detik sebelum meminta kode lagi.` });
+      const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      const next = { ...rec, hash: otpHash(email, code), exp: Date.now() + OTP_MINUTES * 60000, tries: 0, sentAt: Date.now() };
+      await db.set('signup:' + email, next);
+      try { await Mail.sendMail({ to: email, ...Mail.otpEmail(rec.name, code, OTP_MINUTES, 'signup') }); }
+      catch (e) { console.error('signup otp mail error', e.message); return C.send(res, 502, { error: 'Email kode gagal dikirim. Hubungi admin El Ai.' }); }
+      return C.send(res, 200, { ok: true, resendIn: RESEND_SECONDS });
+    }
+
     const password = String(b.password || '');
     if (!EMAIL_RE.test(email)) return C.send(res, 400, { error: 'Alamat email tidak valid.', field: 'email' });
     if (password.length < 8 || password.length > 100) return C.send(res, 400, { error: 'Kata sandi 8–100 karakter.', field: 'password' });
@@ -88,11 +129,20 @@ module.exports = async function handler(req, res) {
       if (age < cfg.minAge) return C.send(res, 403, { error: `Maaf, El Ai hanya untuk pengguna berusia ${cfg.minAge} tahun ke atas.`, field: 'birth' });
       if (email === ADMIN_EMAIL() || (await C.userByEmail(email))) return C.send(res, 409, { error: 'Email ini sudah terdaftar. Silakan masuk.', field: 'email' });
 
-      const u = await C.createUser({ name, email, passwordHash: C.hashPassword(password), birth });
-      u.lastLoginAt = Date.now();
-      await C.saveUser(u);
-      C.startSession(req, res, u);
-      return C.send(res, 200, { ok: true, user: C.publicUser(u) });
+      // Verifikasi email: akun baru dibuat SETELAH kode 6 angka yang dikirim ke email dimasukkan dengan benar.
+      const mail = await Mail.getMailConfig();
+      if (!mail.ready) return C.send(res, 503, { error: 'Pendaftaran butuh verifikasi email, tetapi email pengirim belum diatur. Hubungi admin El Ai.' });
+      if (await limited('rl:signup:email:' + email, 5, 3600)) return C.send(res, 429, { error: 'Terlalu banyak permintaan kode untuk email ini. Coba lagi dalam 1 jam.' });
+      const prev = await db.get('signup:' + email);
+      if (prev) {
+        const wait = Math.ceil((prev.sentAt + RESEND_SECONDS * 1000 - Date.now()) / 1000);
+        if (wait > 0) return C.send(res, 429, { error: `Kode sudah dikirim. Tunggu ${wait} detik untuk meminta lagi.` });
+      }
+      const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      await db.set('signup:' + email, { name, passwordHash: C.hashPassword(password), birth, hash: otpHash(email, code), exp: Date.now() + OTP_MINUTES * 60000, tries: 0, sentAt: Date.now() });
+      try { await Mail.sendMail({ to: email, ...Mail.otpEmail(name, code, OTP_MINUTES, 'signup') }); }
+      catch (e) { await db.del('signup:' + email); console.error('signup otp mail error', e.message); return C.send(res, 502, { error: 'Email kode gagal dikirim. Pastikan alamat email benar, atau hubungi admin El Ai.' }); }
+      return C.send(res, 200, { ok: true, needOtp: true, resendIn: RESEND_SECONDS, message: 'Kode 6 angka sudah dikirim ke emailmu. Cek juga folder spam.' });
     }
 
     // ---------- masuk ----------

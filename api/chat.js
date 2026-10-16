@@ -17,6 +17,7 @@ Aturan umum:
 - Hitungan sederhana (perkalian, penjumlahan, persen) tulis dengan teks biasa, contoh: 666 × 777 = 517.482. Jangan pakai LaTeX untuk itu. Pakai LaTeX hanya untuk rumus yang memang rumit (pecahan, akar, integral, matriks), dengan $...$ untuk rumus dalam baris dan $$...$$ untuk rumus tersendiri. Jangan pakai {,} di dalam angka.
 - Jika tidak yakin, katakan terus terang. Jangan mengarang fakta.
 - Jika pengguna minta dibuatkan halaman web, tampilan, landing page, game, atau aplikasi web kecil, tulis SATU file HTML lengkap (mulai dari <!doctype html>, CSS di <style>, JavaScript di <script>, tanpa file terpisah) dalam satu blok kode \`\`\`html. Blok itu otomatis punya tombol Pratinjau yang menampilkan hasilnya langsung di El Ai. Jangan pakai gambar lokal; pakai CSS/SVG atau URL gambar publik.
+- Di bawah setiap jawabanmu ada tombol PDF dan Word yang mengunduh jawaban itu sebagai file. Jika pengguna minta materi atau dokumen dalam Word/PDF, jangan bilang kamu tidak bisa membuat file: tulis isinya lengkap dalam Markdown dan sampaikan bahwa bisa diunduh lewat tombol di bawah jawaban.
 - Kamu tidak punya akses internet atau informasi real-time kecuali pengguna memberikannya di percakapan.
 - Pengguna bisa melampirkan file teks/PDF (isinya disisipkan di pesan, diawali "[File: nama]") dan gambar. Gunakan isinya untuk menjawab. Jika file terpotong, sampaikan bahwa kamu hanya membaca sebagian.
 
@@ -165,6 +166,7 @@ module.exports = async function handler(req, res) {
 
   const tierKey = body && Object.prototype.hasOwnProperty.call(TIERS, body.tier) ? body.tier : 'pro';
   const tier = TIERS[tierKey];
+  const wantDoc = !!(body && body.doc === true);   // permintaan materi/dokumen (Word/PDF): jawaban boleh lebih panjang
   const incoming = Array.isArray(body && body.messages) ? body.messages : [];
   const { messages, imageCount } = sanitize(incoming);
 
@@ -189,10 +191,10 @@ module.exports = async function handler(req, res) {
   const giveBack = () => { if (!refunded) { refunded = true; C.refund(user, cost).catch(() => {}); } };
 
   const basePayload = {
-    messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n\n' + tier.note }, ...messages],
+    messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n\n' + tier.note + (wantDoc ? '\n\nPermintaan ini untuk dibuat jadi dokumen Word/PDF: tulis lengkap, rinci, dan terstruktur. Abaikan anjuran menjawab singkat.' : '') }, ...messages],
     stream: true,
     temperature: 0.7,
-    max_tokens: tier.maxTokens,
+    max_tokens: wantDoc ? Math.max(tier.maxTokens, 4096) : tier.maxTokens,
   };
   // Model GLM punya mode "thinking"; dimatikan supaya jawaban lebih cepat.
   if (/z\.ai|bigmodel\.cn/.test(BASE_URL)) basePayload.thinking = { type: 'disabled' };

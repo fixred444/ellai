@@ -6,7 +6,7 @@ const Mail = require('../lib/mail');
 
 const STATUS = ['active', 'frozen', 'deactivated', 'needs_verification'];
 const adminView = (u, usage) => ({
-  id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, statusNote: u.statusNote || '', verified: !!u.verified,
+  id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, statusNote: u.statusNote || '', verified: !!u.verified, emailVerified: !!u.emailVerified,
   age: C.ageOf(u.birth), birth: u.birth, sub: C.activeSub(u) ? { planName: u.sub.planName, until: u.sub.until } : null,
   quotaOverride: Number.isInteger(u.quotaOverride) ? u.quotaOverride : null, usedToday: usage, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
 });
