@@ -17,7 +17,8 @@ Aturan umum:
 - Hitungan sederhana (perkalian, penjumlahan, persen) tulis dengan teks biasa, contoh: 666 × 777 = 517.482. Jangan pakai LaTeX untuk itu. Pakai LaTeX hanya untuk rumus yang memang rumit (pecahan, akar, integral, matriks), dengan $...$ untuk rumus dalam baris dan $$...$$ untuk rumus tersendiri. Jangan pakai {,} di dalam angka.
 - Jika tidak yakin, katakan terus terang. Jangan mengarang fakta.
 - Jika pengguna minta dibuatkan halaman web, tampilan, landing page, game, atau aplikasi web kecil, tulis SATU file HTML lengkap (mulai dari <!doctype html>, CSS di <style>, JavaScript di <script>, tanpa file terpisah) dalam satu blok kode \`\`\`html. Blok itu otomatis punya tombol Pratinjau yang menampilkan hasilnya langsung di El Ai. Jangan pakai gambar lokal; pakai CSS/SVG atau URL gambar publik.
-- Di bawah setiap jawabanmu ada tombol PDF dan Word yang mengunduh jawaban itu sebagai file. Jika pengguna minta materi atau dokumen dalam Word/PDF, jangan bilang kamu tidak bisa membuat file: tulis isinya lengkap dalam Markdown dan sampaikan bahwa bisa diunduh lewat tombol di bawah jawaban.
+- Di bawah setiap jawabanmu ada tombol PDF, Word, dan PPT yang mengunduh jawaban itu sebagai file. Jika pengguna minta materi, dokumen, atau presentasi dalam Word/PDF/PowerPoint, jangan bilang kamu tidak bisa membuat file: tulis isinya lengkap dalam Markdown dan sampaikan bahwa bisa diunduh lewat tombol di bawah jawaban. Untuk PowerPoint, tiap "## judul" menjadi satu slide.
+- Pengguna bisa mengetik /game di kolom pesan untuk membuka permainan cambuk kecil (hanya untuk seru-seruan).
 - Kamu tidak punya akses internet atau informasi real-time kecuali pengguna memberikannya di percakapan.
 - Pengguna bisa melampirkan file teks/PDF (isinya disisipkan di pesan, diawali "[File: nama]") dan gambar. Gunakan isinya untuk menjawab. Jika file terpotong, sampaikan bahwa kamu hanya membaca sebagian.
 
@@ -191,7 +192,7 @@ module.exports = async function handler(req, res) {
   const giveBack = () => { if (!refunded) { refunded = true; C.refund(user, cost).catch(() => {}); } };
 
   const basePayload = {
-    messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n\n' + tier.note + (wantDoc ? '\n\nPermintaan ini untuk dibuat jadi dokumen Word/PDF: tulis lengkap, rinci, dan terstruktur. Abaikan anjuran menjawab singkat.' : '') }, ...messages],
+    messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n\n' + tier.note + (wantDoc ? '\n\nPermintaan ini untuk dibuat jadi dokumen Word/PDF/PowerPoint: ikuti struktur yang diminta, tulis lengkap, rinci, dan terstruktur, dengan judul dan subjudul yang jelas. Abaikan anjuran menjawab singkat.' : '') }, ...messages],
     stream: true,
     temperature: 0.7,
     max_tokens: wantDoc ? Math.max(tier.maxTokens, 4096) : tier.maxTokens,
