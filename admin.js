@@ -99,6 +99,7 @@
       <dl class="kv"><dt>Status</dt><dd>${badge(u.status, STATUS[u.status])} ${u.statusNote ? '<span class="muted">' + esc(u.statusNote) + '</span>' : ''}</dd>
         <dt>Usia</dt><dd>${u.age == null ? '–' : u.age + ' tahun (lahir ' + esc(u.birth) + ')'}</dd>
         <dt>Verifikasi</dt><dd>${u.verified ? 'Sudah' : 'Belum'}</dd>
+        <dt>Email</dt><dd>${u.emailVerified ? 'Terverifikasi lewat kode OTP' : 'Belum diverifikasi (akun lama)'}</dd>
         <dt>Paket</dt><dd>${u.sub ? esc(u.sub.planName) + ' sampai ' + d(u.sub.until) : 'Gratis'}</dd>
         <dt>Token hari ini</dt><dd>${u.usedToday}${u.quotaOverride !== null ? ' (batas khusus ' + u.quotaOverride + ')' : ''}</dd>
         <dt>Terakhir masuk</dt><dd>${dt(u.lastLoginAt)}</dd></dl>

@@ -41,7 +41,7 @@ Pilihan pengguna disimpan di browser. Kalau satu model tidak tersedia di akunmu,
 
 ## Ubah foto jadi PDF / Word
 
-Lampirkan foto (maks. 3), lalu ketuk **Jadikan PDF** / **Jadikan Word** di atas kolom ketik, atau ketik "jadikan pdf", "ubah ke word", dll.
+Lampirkan foto (maks. 10 untuk PDF/Word; untuk tanya jawab tetap maks. 3), lalu ketuk **Jadikan PDF** / **Jadikan Word** di atas kolom ketik, atau ketik "jadikan pdf", "ubah ke word", dll.
 
 - **PDF**: tiap foto jadi satu halaman A4. Dibuat langsung di browser, tanpa API.
 - **Word (.docx)**: AI membaca teks pada foto (OCR) lalu disusun jadi dokumen yang bisa diedit. Jika tidak ada tulisan atau gagal dibaca, foto ditempel apa adanya. Ketik "jadikan word sebagai gambar" untuk memaksa foto ditempel.
@@ -100,7 +100,7 @@ Edit konstanta `SYSTEM_PROMPT` di `api/chat.js`.
 
 ## Lampiran
 
-- **Foto** (maks 3 per pesan): dikompres di browser lalu dikirim ke model gambar (`AI_VISION_MODEL`). Model itu harus diizinkan di akun Groq kamu.
+- **Foto** (maks 3 per pesan untuk tanya jawab; sampai 10 untuk Jadikan PDF/Word, ubah `MAX_CONVERT_IMAGES` di app.js): dikompres di browser lalu dikirim ke model gambar (`AI_VISION_MODEL`). Model itu harus diizinkan di akun Groq kamu.
 - **PDF** (yang berisi teks) dan **file teks/kode** (txt, md, csv, json, js, py, dst.): isinya dibaca di browser lalu disisipkan ke pesan. Dibatasi sekitar 12.000 karakter per file.
 - PDF hasil scan tidak punya teks; kirim sebagai foto.
 - Foto hanya disimpan di memori selama halaman terbuka (riwayat hanya menyimpan thumbnail).
@@ -110,3 +110,16 @@ Edit konstanta `SYSTEM_PROMPT` di `api/chat.js`.
 - `glass.css` adalah lapisan tampilan kaca (dimuat setelah `style.css` dan `auth.css`). Hapus tag `<link>`-nya di `index.html` / `masuk.html` untuk kembali ke gaya datar. Warna dan bahan diatur lewat variabel di bagian atas file.
 - `preview.js`: blok kode `html`/`svg` di jawaban AI otomatis punya tombol **Pratinjau**. Hasilnya tampil di `<iframe sandbox>` tanpa `allow-same-origin`, jadi tidak bisa membaca akun/cookie El Ai. Ada tombol ukuran ponsel/penuh, muat ulang, dan unduh `.html`. Blok `css`/`js` terpisah di jawaban yang sama otomatis digabung jika HTML memanggil `style.css`/`script.js`.
 - System prompt di `api/chat.js` meminta El Ai menulis satu file HTML lengkap untuk permintaan halaman web, supaya pratinjau langsung jalan.
+
+### Unduh jawaban jadi Word / PDF
+- Ketik misalnya "buatkan materi perkecambahan dalam Word" (atau PDF / keduanya). El Ai menulis materinya (batas jawaban dinaikkan jadi 4096 token), lalu muncul tombol **Unduh PDF / Unduh Word**.
+- Ketik "jadikan pdf" / "ubah ke word" tanpa foto: jawaban El Ai yang terakhir dijadikan file (tidak memakai kuota lagi).
+- Di bawah setiap jawaban juga ada tombol kecil **PDF** dan **Word** kapan saja.
+- File dibuat di browser (convert.js): judul, daftar, tabel, kode, dan nomor halaman. Rumus LaTeX diubah jadi teks biasa; emoji dan simbol langka tidak tampil di PDF.
+- Jadikan Word dari foto memakai OCR: tiap foto = 1 permintaan AI (memotong kuota), jadi jumlah foto dibatasi 10.
+
+### Verifikasi email saat daftar (OTP)
+- Daftar sekarang 2 langkah: isi formulir, lalu masukkan kode 6 angka yang dikirim ke email. Akun baru dibuat HANYA setelah kode benar (data sementara disimpan dengan kata sandi yang sudah di-hash).
+- Kode berlaku 10 menit, maks. 5 kali salah, kirim ulang tiap 60 detik, maks. 5 kode per email per jam.
+- Memakai email pengirim yang sama dengan fitur lupa kata sandi (panel admin, Gmail + App Password). **Kalau email pengirim belum diatur, pendaftaran ditolak** dengan pesan untuk menghubungi admin, jadi atur dulu sebelum deploy.
+- Akun yang daftar lewat OTP ditandai "Terverifikasi lewat kode OTP" di panel admin. Akun lama tetap bisa masuk seperti biasa.

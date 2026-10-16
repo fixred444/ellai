@@ -2,6 +2,7 @@
  *  ElConvert.buildPdf(images)          -> Uint8Array  (tiap gambar = 1 halaman)
  *  ElConvert.buildDocxFromText(pages)  -> Uint8Array  (pages: array teks, 1 teks = 1 halaman)
  *  ElConvert.buildDocxFromImages(imgs) -> Uint8Array  (gambar ditempel di dokumen Word)
+ *  ElConvert.buildPdfFromMarkdown(md) / buildDocxFromMarkdown(md) -> materi/teks AI jadi PDF / Word
  * `images` = [{ bytes: Uint8Array (JPEG), w, h }]
  */
 (function (root) {
@@ -258,7 +259,507 @@
     return docxPackage(body, images);
   }
 
-  const api = { buildPdf, buildDocxFromText, buildDocxFromImages, _zip: zip, _crc32: crc32 };
+  /* =====================================================================
+   *  TEKS (Markdown) -> PDF / Word
+   *  Dipakai untuk "buatkan materi ... dalam Word/PDF" dan tombol unduh di bawah jawaban.
+   *  ElConvert.buildPdfFromMarkdown(md, { title })  -> Uint8Array
+   *  ElConvert.buildDocxFromMarkdown(md, { title }) -> Uint8Array
+   *  ElConvert.mdTitle(md)                           -> judul pertama (# ...) atau ''
+   * ===================================================================== */
+
+  /* ---------- rumus LaTeX -> teks biasa ---------- */
+  const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', Delta: 'Δ', epsilon: 'ε', theta: 'θ', lambda: 'λ', mu: 'µ', pi: 'π', rho: 'ρ', sigma: 'σ', Sigma: 'Σ', tau: 'τ', phi: 'φ', omega: 'ω', Omega: 'Ω' };
+  const TEXSYM = { times: '×', cdot: '·', pm: '±', le: '≤', leq: '≤', ge: '≥', geq: '≥', approx: '≈', ne: '≠', neq: '≠', rightarrow: '→', to: '→', longrightarrow: '→', Rightarrow: '⇒', leftarrow: '←', leftrightarrow: '↔', rightleftharpoons: '⇌', degree: '°', circ: '°', infty: '∞' };
+  const SUBS = '₀₁₂₃₄₅₆₇₈₉₊₋', SUPS = '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻', NORM = '0123456789+-';
+  function mapChars(x, table) {
+    let out = '';
+    for (const ch of x.replace(/−/g, '-')) { const i = NORM.indexOf(ch); if (i < 0) return null; out += table[i]; }
+    return out;
+  }
+  const toSup = (x) => mapChars(x, SUPS) || '^' + x;
+  const toSub = (x) => mapChars(x, SUBS) || '_' + x;
+
+  function texInner(t) {
+    let s = t.replace(/\^\{?\\circ\}?/g, '°');
+    for (let k = 0; k < 4; k++) s = s.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '($1)/($2)');
+    s = s
+      .replace(/\\(?:text|mathrm|mathbf|textbf|mathit|operatorname)\s*\{([^{}]*)\}/g, '$1')
+      .replace(/\\sqrt\s*\{([^{}]*)\}/g, '√($1)')
+      .replace(/\\([A-Za-z]+)(?![A-Za-z])/g, (m, w) => TEXSYM[w] || GREEK[w] || '')
+      .replace(/\\[,;:! ]/g, ' ')
+      .replace(/\^\{([^{}]*)\}/g, (m, x) => toSup(x))
+      .replace(/\^([0-9+\-])/g, (m, x) => toSup(x))
+      .replace(/_\{([^{}]*)\}/g, (m, x) => toSub(x))
+      .replace(/_([0-9])/g, (m, x) => toSub(x))
+      .replace(/[{}]/g, '');
+    return s.replace(/\s+/g, ' ').trim();
+  }
+
+  function texToPlain(text) {
+    const keep = [];
+    // lindungi blok kode dan `kode inline`
+    text = text.replace(/```[\s\S]*?(```|$)/g, (m) => { keep.push(m); return '\u0005' + (keep.length - 1) + '\u0005'; });
+    text = text.replace(/`[^`\n]*`/g, (m) => { keep.push(m); return '\u0005' + (keep.length - 1) + '\u0005'; });
+    text = text
+      .replace(/\$\$([\s\S]+?)\$\$/g, (m, t) => texInner(t))
+      .replace(/\\\[([\s\S]+?)\\\]/g, (m, t) => texInner(t))
+      .replace(/\\\(([\s\S]+?)\\\)/g, (m, t) => texInner(t))
+      .replace(/(^|[^\\$\w])\$(?!\s)([^$\n]+?)(?<!\s)\$(?![\w$])/g, (m, pre, t) => pre + texInner(t));
+    return text.replace(/\u0005(\d+)\u0005/g, (m, i) => keep[i]);
+  }
+
+  /* ---------- parser Markdown ---------- */
+  function parseInline(s) {
+    s = String(s)
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1 ($2)')
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/~~([^~\n]+)~~/g, '$1');
+    const out = [];
+    const re = /(\*\*\*[^*]+?\*\*\*|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\s][^*]*?\*|`[^`]+`)/g;
+    let last = 0, m;
+    const add = (t, f) => { if (t) out.push(Object.assign({ t }, f)); };
+    while ((m = re.exec(s))) {
+      add(s.slice(last, m.index), {});
+      const tok = m[0];
+      if (tok.startsWith('***')) add(tok.slice(3, -3), { b: true, i: true });
+      else if (tok.startsWith('**') || tok.startsWith('__')) add(tok.slice(2, -2), { b: true });
+      else if (tok.startsWith('`')) add(tok.slice(1, -1), { c: true });
+      else add(tok.slice(1, -1), { i: true });
+      last = m.index + tok.length;
+    }
+    add(s.slice(last), {});
+    return out;
+  }
+
+  const plainOf = (spans) => spans.map((x) => x.t).join('');
+
+  function parseMd(md) {
+    const lines = String(md).replace(/\r/g, '').replace(/\t/g, '    ').split('\n');
+    const blocks = [];
+    let i = 0;
+    const isSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l) && l.includes('-') && (l.includes('|') || /^\s*:?-{3,}/.test(l)) && l.includes('|');
+    const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+    const special = (l) => /^\s*(```|#{1,6}\s|>|\|.*\||[-*•+]\s+|\d+[.)]\s+|(-{3,}|\*{3,}|_{3,})\s*$)/.test(l);
+
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i++; continue; }
+
+      if (/^\s*```/.test(line)) {
+        const code = [];
+        i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+        i++;
+        blocks.push({ type: 'code', lines: code });
+        continue;
+      }
+      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { blocks.push({ type: 'hr' }); i++; continue; }
+
+      const h = /^\s*(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+      if (h) { blocks.push({ type: 'h', level: h[1].length, spans: parseInline(h[2].replace(/\*\*/g, '')) }); i++; continue; }
+
+      if (/^\s*\|.*\|\s*$/.test(line) || (line.includes('|') && i + 1 < lines.length && isSep(lines[i + 1]))) {
+        const rows = [];
+        while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+          if (!isSep(lines[i])) rows.push(cells(lines[i]).map(parseInline));
+          i++;
+        }
+        if (rows.length) { blocks.push({ type: 'table', rows }); continue; }
+      }
+
+      const q = /^\s*>\s?(.*)$/.exec(line);
+      if (q) {
+        const buf = [q[1]];
+        i++;
+        while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+        blocks.push({ type: 'quote', spans: parseInline(buf.join(' ')) });
+        continue;
+      }
+
+      const li = /^(\s*)([-*•+]|\d+[.)])\s+(.*)$/.exec(line);
+      if (li) {
+        const bullet = !/\d/.test(li[2]);
+        blocks.push({ type: 'li', level: Math.min(3, Math.floor(li[1].length / 2)), marker: bullet ? null : li[2], spans: parseInline(li[3]) });
+        i++;
+        continue;
+      }
+
+      const buf = [line.trim()];
+      i++;
+      while (i < lines.length && lines[i].trim() && !special(lines[i])) buf.push(lines[i++].trim());
+      blocks.push({ type: 'p', spans: parseInline(buf.join(' ')) });
+    }
+    return blocks;
+  }
+
+  function mdTitle(md) {
+    const m = /^\s*#{1,2}\s+(.+?)\s*#*\s*$/m.exec(String(md || ''));
+    return m ? plainOf(parseInline(m[1].replace(/\*\*/g, ''))).trim() : '';
+  }
+
+  function colWeights(rows, total, minW) {
+    const n = Math.max(...rows.map((r) => r.length));
+    const w = [];
+    for (let c = 0; c < n; c++) {
+      let mx = 4;
+      rows.forEach((r) => { if (r[c]) mx = Math.max(mx, Math.min(plainOf(r[c]).length, 42)); });
+      w.push(mx + 4);
+    }
+    const sum = w.reduce((a, b) => a + b, 0);
+    let widths = w.map((x) => Math.max(minW, (x / sum) * total));
+    const s2 = widths.reduce((a, b) => a + b, 0);
+    widths = widths.map((x) => (x / s2) * total);
+    return widths;
+  }
+
+  /* ---------- PDF teks (font bawaan PDF: Helvetica / Courier, tanpa embed) ---------- */
+  const W_REG = '278 278 355 556 556 889 667 191 333 333 389 584 278 333 278 278 556 556 556 556 556 556 556 556 556 556 278 278 584 584 584 556 1015 667 667 722 722 667 611 778 722 278 500 667 556 833 722 778 667 778 722 667 611 722 667 944 667 667 611 278 278 278 469 556 333 556 556 500 556 556 278 556 556 222 222 500 222 833 556 556 556 556 333 500 278 556 500 722 500 500 500 334 260 334 584'.split(' ').map(Number);
+  const W_BOLD = '278 333 474 556 556 889 722 238 333 333 389 584 278 333 278 278 556 556 556 556 556 556 556 556 556 556 333 333 584 584 584 611 975 722 722 722 722 667 611 778 722 278 556 722 611 833 722 778 667 778 722 667 611 722 667 944 667 667 611 333 278 333 584 556 333 556 611 556 611 556 333 611 611 278 278 556 278 889 611 611 611 611 389 556 333 611 556 778 556 556 500 389 280 389 584'.split(' ').map(Number);
+  const W_SPECIAL = { 0x95: 350, 0x96: 556, 0x97: 1000, 0x91: 222, 0x92: 222, 0x93: 333, 0x94: 333, 0x85: 1000, 0xb0: 400, 0xd7: 584, 0xb1: 584, 0xb7: 278, 0xa0: 278 };
+
+  const CP1252 = { 0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88, 0x2030: 0x89, 0x0160: 0x8a, 0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f };
+  const REPL = {
+    '→': '->', '←': '<-', '↔': '<->', '⇒': '=>', '⇌': '<=>', '≥': '>=', '≤': '<=', '≈': '~', '≠': '!=', '∞': 'tak hingga', '√': 'akar ', '−': '-', '∑': 'jumlah ', '✓': 'v', '✔': 'v', '·': '·',
+    'α': 'alfa', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta', 'Δ': 'Delta', 'ε': 'epsilon', 'θ': 'theta', 'λ': 'lambda', 'µ': 'µ', 'μ': 'µ', 'π': 'pi', 'ρ': 'rho', 'σ': 'sigma', 'Σ': 'Sigma', 'τ': 'tau', 'φ': 'phi', 'ω': 'omega', 'Ω': 'Omega',
+    '⁴': '^4', '⁵': '^5', '⁶': '^6', '⁷': '^7', '⁸': '^8', '⁹': '^9', '⁰': '^0', '⁺': '^+', '⁻': '^-',
+    '\u00a0': ' ', '\u2009': ' ', '\u202f': ' ', '\u200b': '', '\u200d': '', '\ufe0f': '', '\u2212': '-',
+  };
+  '₀₁₂₃₄₅₆₇₈₉'.split('').forEach((c, i) => { REPL[c] = String(i); });
+  REPL['₊'] = '+'; REPL['₋'] = '-';
+
+  // string Unicode -> string "byte" WinAnsi (tiap karakter = 1 byte)
+  function toWin(s) {
+    let out = '';
+    for (const ch of String(s)) {
+      if (REPL[ch] !== undefined) { out += toWin(REPL[ch]); continue; }
+      const c = ch.codePointAt(0);
+      if (c >= 32 && c < 127) out += ch;
+      else if (c >= 0xa0 && c <= 0xff) out += ch;
+      else if (CP1252[c]) out += String.fromCharCode(CP1252[c]);
+      else if (c === 9 || c === 10) out += ' ';
+      // emoji, simbol dekoratif, dan karakter lain yang tak ada di font dasar dibuang
+    }
+    return out;
+  }
+
+  const hexOf = (s) => { let h = ''; for (let i = 0; i < s.length; i++) h += (s.charCodeAt(i) & 255).toString(16).padStart(2, '0'); return h; };
+  function charW(code, bold, mono) {
+    if (mono) return 600;
+    if (code >= 32 && code <= 126) return (bold ? W_BOLD : W_REG)[code - 32];
+    return W_SPECIAL[code] || (bold ? 611 : 556);
+  }
+  function textW(s, bold, mono, size) {
+    let w = 0;
+    for (let i = 0; i < s.length; i++) w += charW(s.charCodeAt(i), bold, mono);
+    return (w * size) / 1000;
+  }
+
+  function buildPdfFromMarkdown(md, opts) {
+    opts = opts || {};
+    const blocks = parseMd(texToPlain(String(md || '')));
+    if (!blocks.length) throw new Error('Tidak ada teks');
+    const title = opts.title || mdTitle(md) || 'Dokumen El Ai';
+
+    const PW = 595, PH = 842, ML = 57, MR = 57, MT = 62, MB = 68;
+    const CW = PW - ML - MR;
+    const pages = [];
+    let ops = null, y = 0;
+    const newPage = () => { ops = []; pages.push(ops); y = PH - MT; };
+    newPage();
+
+    const fontOf = (sp) => (sp.c ? 'F4' : sp.b ? 'F2' : sp.i ? 'F3' : 'F1');
+    const tokensOf = (spans, base) => {
+      const toks = [];
+      spans.forEach((sp) => {
+        const bold = !!(sp.b || base.bold), mono = !!sp.c;
+        const font = mono ? 'F4' : bold ? 'F2' : (sp.i || base.italic) ? 'F3' : 'F1';
+        toWin(sp.t).split(/( +)/).forEach((part) => {
+          if (part) toks.push({ t: part, font, bold: font === 'F2', mono, sp: /^ +$/.test(part) });
+        });
+      });
+      return toks;
+    };
+
+    // pecah token jadi baris sesuai lebar
+    function wrap(spans, size, maxW, base) {
+      const toks = tokensOf(spans, base || {});
+      const lines = [];
+      let cur = [], w = 0;
+      const flush = () => {
+        while (cur.length && cur[cur.length - 1].sp) cur.pop();
+        lines.push(cur); cur = []; w = 0;
+      };
+      toks.forEach((tk) => {
+        let tw = textW(tk.t, tk.bold, tk.mono, size);
+        if (!cur.length && tk.sp) return;
+        if (tw > maxW && !tk.sp) {                 // kata sangat panjang: potong per huruf
+          let part = '';
+          for (const chh of tk.t) {
+            const cw = textW(chh, tk.bold, tk.mono, size);
+            if (w + cw > maxW && (part || cur.length)) {
+              if (part) cur.push({ t: part, font: tk.font, bold: tk.bold, mono: tk.mono, w: textW(part, tk.bold, tk.mono, size) });
+              flush(); part = '';
+            }
+            part += chh; w += cw;
+          }
+          if (part) cur.push({ t: part, font: tk.font, bold: tk.bold, mono: tk.mono, w: textW(part, tk.bold, tk.mono, size) });
+          return;
+        }
+        if (w + tw > maxW && cur.length && !tk.sp) flush();
+        if (!cur.length && tk.sp) return;
+        cur.push({ t: tk.t, font: tk.font, bold: tk.bold, mono: tk.mono, w: tw });
+        w += tw;
+      });
+      if (cur.length) flush();
+      return lines.length ? lines : [[]];
+    }
+
+    function emit(line, x, yy, size, color) {
+      const runs = [];
+      line.forEach((tk) => {
+        const last = runs[runs.length - 1];
+        if (last && last.font === tk.font) { last.t += tk.t; last.w += tk.w; } else runs.push({ font: tk.font, t: tk.t, w: tk.w });
+      });
+      if (color) ops.push(color + ' rg');
+      let cx = x;
+      runs.forEach((r) => {
+        ops.push('BT /' + r.font + ' ' + num(size) + ' Tf ' + num(cx) + ' ' + num(yy) + ' Td <' + hexOf(r.t) + '> Tj ET');
+        cx += r.w;
+      });
+      if (color) ops.push('0 g');
+    }
+
+    const need = (h) => { if (y - h < MB) newPage(); };
+
+    function paragraph(spans, o) {
+      const size = o.size || 11, lh = size * (o.lh || 1.45);
+      const x = o.x != null ? o.x : ML, maxW = o.w != null ? o.w : CW;
+      const lines = wrap(spans, size, maxW, o.base);
+      lines.forEach((ln, idx) => {
+        need(lh);
+        y -= lh;
+        if (o.bar) ops.push('0.75 0.78 0.85 rg ' + num(x - 10) + ' ' + num(y - size * 0.25) + ' 3 ' + num(lh) + ' re f 0 g');
+        if (idx === 0 && o.marker) emit([{ t: o.marker, font: 'F1', w: 0 }], o.markerX, y, size, o.color);
+        emit(ln, x, y, size, o.color);
+      });
+    }
+
+    const HS = { 1: 21, 2: 16, 3: 13, 4: 12, 5: 11.5, 6: 11 };
+    const HEAD = '0.10 0.20 0.42';
+    let first = true;
+
+    blocks.forEach((b) => {
+      if (b.type === 'h') {
+        const size = HS[b.level];
+        if (!first) y -= size * (b.level <= 2 ? 0.7 : 0.5);
+        need(size * 1.4 * 2 + 20);
+        paragraph(b.spans, { size, lh: 1.3, base: { bold: true }, color: HEAD });
+        if (b.level <= 2) {
+          y -= 3;
+          ops.push((b.level === 1 ? '0.10 0.20 0.42' : '0.8 0.82 0.88') + ' RG ' + (b.level === 1 ? '1.2' : '0.7') + ' w ' + num(ML) + ' ' + num(y) + ' m ' + num(PW - MR) + ' ' + num(y) + ' l S 0 G');
+        }
+        y -= size * 0.35;
+      } else if (b.type === 'p') {
+        paragraph(b.spans, { size: 11 });
+        y -= 6;
+      } else if (b.type === 'li') {
+        const x0 = ML + 10 + b.level * 18, hang = 16;
+        const marker = b.marker ? toWin(b.marker) : (b.level ? '-' : '\x95');
+        paragraph(b.spans, { size: 11, x: x0 + hang, w: CW - (x0 - ML) - hang, marker, markerX: x0 + (b.marker ? 0 : 3) });
+        y -= 2.5;
+      } else if (b.type === 'quote') {
+        paragraph(b.spans, { size: 11, x: ML + 16, w: CW - 20, base: { italic: true }, color: '0.3 0.3 0.35', bar: true });
+        y -= 6;
+      } else if (b.type === 'hr') {
+        need(14); y -= 8;
+        ops.push('0.75 G 0.6 w ' + num(ML) + ' ' + num(y) + ' m ' + num(PW - MR) + ' ' + num(y) + ' l S 0 G');
+        y -= 8;
+      } else if (b.type === 'code') {
+        const size = 9.5, lh = 13, per = Math.floor((CW - 12) / (0.6 * size));
+        const rows = [];
+        b.lines.forEach((l) => {
+          const t = toWin(l);
+          if (!t.length) rows.push('');
+          for (let k = 0; k < t.length; k += per) rows.push(t.slice(k, k + per));
+        });
+        y -= 2;
+        rows.forEach((r) => {
+          need(lh);
+          y -= lh;
+          ops.push('0.95 0.95 0.96 rg ' + num(ML) + ' ' + num(y - 3.5) + ' ' + num(CW) + ' ' + lh + ' re f 0 g');
+          if (r) emit([{ t: r, font: 'F4', w: textW(r, false, true, size) }], ML + 6, y, size);
+        });
+        y -= 8;
+      } else if (b.type === 'table') {
+        const size = 9.5, lh = size * 1.4, pad = 4;
+        const widths = colWeights(b.rows, CW, 42);
+        const nCol = widths.length;
+        const drawRow = (row, header) => {
+          const cellLines = [];
+          for (let c = 0; c < nCol; c++) cellLines.push(wrap(row[c] || [], size, widths[c] - 2 * pad, { bold: header }));
+          const h = Math.max(...cellLines.map((l) => l.length)) * lh + 2 * pad;
+          if (y - h < MB) newPage();
+          const top = y;
+          let cx = ML;
+          for (let c = 0; c < nCol; c++) {
+            if (header) ops.push('0.88 0.91 0.97 rg ' + num(cx) + ' ' + num(top - h) + ' ' + num(widths[c]) + ' ' + num(h) + ' re f 0 g');
+            ops.push('0.62 G 0.5 w ' + num(cx) + ' ' + num(top - h) + ' ' + num(widths[c]) + ' ' + num(h) + ' re S 0 G');
+            cellLines[c].forEach((ln, k) => emit(ln, cx + pad, top - pad - (k + 1) * lh + (lh - size) * 0.55, size));
+            cx += widths[c];
+          }
+          y = top - h;
+        };
+        y -= 2;
+        b.rows.forEach((row, idx) => drawRow(row, idx === 0));
+        y -= 10;
+      }
+      first = false;
+    });
+
+    // nomor halaman
+    const total = pages.length;
+    pages.forEach((p, i) => {
+      const t = toWin('Halaman ' + (i + 1) + ' dari ' + total);
+      p.push('0.5 g BT /F1 9 Tf ' + num((PW - textW(t, false, false, 9)) / 2) + ' 34 Td <' + hexOf(t) + '> Tj ET 0 g');
+    });
+
+    // rakit objek PDF (semua ASCII; teks memakai string heksa)
+    const objs = [];
+    objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    const pageIds = pages.map((_, i) => 8 + i * 2);
+    objs[2] = '<< /Type /Pages /Kids [' + pageIds.map((id) => id + ' 0 R').join(' ') + '] /Count ' + pages.length + ' >>';
+    ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Courier'].forEach((f, i) => {
+      objs[3 + i] = '<< /Type /Font /Subtype /Type1 /BaseFont /' + f + ' /Encoding /WinAnsiEncoding >>';
+    });
+    let titleHex = 'FEFF';
+    for (let i = 0; i < title.length; i++) titleHex += title.charCodeAt(i).toString(16).padStart(4, '0');
+    objs[7] = '<< /Title <' + titleHex + '> /Producer (El Ai) /Creator (El Ai) >>';
+    pages.forEach((p, i) => {
+      const stream = p.join('\n');
+      objs[8 + i * 2] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PW + ' ' + PH + '] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents ' + (9 + i * 2) + ' 0 R >>';
+      objs[9 + i * 2] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
+    });
+    const last = objs.length - 1;
+    let out = '%PDF-1.4\n';
+    const offs = [];
+    for (let id = 1; id <= last; id++) { offs[id] = out.length; out += id + ' 0 obj\n' + objs[id] + '\nendobj\n'; }
+    const xref = out.length;
+    out += 'xref\n0 ' + (last + 1) + '\n0000000000 65535 f \n';
+    for (let id = 1; id <= last; id++) out += String(offs[id]).padStart(10, '0') + ' 00000 n \n';
+    out += 'trailer\n<< /Size ' + (last + 1) + ' /Root 1 0 R /Info 7 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+    return enc.encode(out);
+  }
+
+  /* ---------- DOCX teks (judul, daftar, tabel, kode, nomor halaman) ---------- */
+  function dRuns(spans, size, o) {
+    o = o || {};
+    return spans.map((s) => {
+      const font = s.c ? '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>' : RPR;
+      return '<w:r><w:rPr>' + font + ((s.b || o.bold) ? '<w:b/>' : '') + ((s.i || o.italic) ? '<w:i/>' : '') +
+        (o.color ? '<w:color w:val="' + o.color + '"/>' : '') + '<w:sz w:val="' + size + '"/></w:rPr>' +
+        '<w:t xml:space="preserve">' + esc(s.t) + '</w:t></w:r>';
+    }).join('');
+  }
+
+  // urutan elemen w:pPr mengikuti skema: keepNext, pBdr, shd, spacing, ind, jc, outlineLvl
+  function dPara(inner, o) {
+    o = o || {};
+    return '<w:p><w:pPr>' + (o.keepNext ? '<w:keepNext/>' : '') + (o.pBdr || '') + (o.shd || '') +
+      '<w:spacing w:before="' + (o.before || 0) + '" w:after="' + (o.after != null ? o.after : 120) + '" w:line="' + (o.line || 288) + '" w:lineRule="auto"/>' +
+      (o.ind || '') + (o.jc ? '<w:jc w:val="' + o.jc + '"/>' : '') + (o.outline != null ? '<w:outlineLvl w:val="' + o.outline + '"/>' : '') +
+      '</w:pPr>' + inner + '</w:p>';
+  }
+
+  function buildDocxFromMarkdown(md, opts) {
+    opts = opts || {};
+    const blocks = parseMd(texToPlain(String(md || '')));
+    if (!blocks.length) throw new Error('Tidak ada teks');
+    const title = opts.title || mdTitle(md) || 'Dokumen El Ai';
+    const TW = 9638; // lebar teks A4 dengan margin 2 cm (dxa)
+    const HS = { 1: 40, 2: 32, 3: 27, 4: 24, 5: 23, 6: 22 };
+    const body = [];
+    let first = true;
+
+    blocks.forEach((b) => {
+      if (b.type === 'h') {
+        const o = { keepNext: true, before: first ? 0 : (b.level <= 2 ? 280 : 200), after: 100, line: 264, outline: Math.min(b.level - 1, 8) };
+        if (b.level === 1) o.pBdr = '<w:pBdr><w:bottom w:val="single" w:sz="8" w:space="4" w:color="1B3A6B"/></w:pBdr>';
+        body.push(dPara(dRuns(b.spans, HS[b.level], { bold: true, color: b.level <= 2 ? '1B3A6B' : '2F4B7C' }), o));
+      } else if (b.type === 'p') {
+        body.push(dPara(dRuns(b.spans, 22), { after: 140 }));
+      } else if (b.type === 'li') {
+        const left = 720 + b.level * 360;
+        const marker = b.marker ? b.marker : (b.level ? '–' : '•');
+        const inner = '<w:r><w:rPr>' + RPR + '<w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">' + esc(marker) + '</w:t></w:r><w:r><w:tab/></w:r>' + dRuns(b.spans, 22);
+        body.push(dPara(inner, { after: 60, ind: '<w:ind w:left="' + left + '" w:hanging="360"/>' }));
+      } else if (b.type === 'quote') {
+        body.push(dPara(dRuns(b.spans, 22, { italic: true, color: '555566' }), {
+          after: 140,
+          pBdr: '<w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="B8C2D6"/></w:pBdr>',
+          ind: '<w:ind w:left="480"/>',
+        }));
+      } else if (b.type === 'hr') {
+        body.push(dPara('', { after: 120, pBdr: '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BFBFBF"/></w:pBdr>' }));
+      } else if (b.type === 'code') {
+        (b.lines.length ? b.lines : ['']).forEach((l, k, arr) => {
+          body.push(dPara(dRuns([{ t: l.replace(/\s+$/, ''), c: true }], 19), {
+            after: k === arr.length - 1 ? 160 : 0, line: 252, shd: '<w:shd w:val="clear" w:color="auto" w:fill="F2F3F5"/>',
+          }));
+        });
+      } else if (b.type === 'table') {
+        const widths = colWeights(b.rows, TW, 900).map(Math.round);
+        const nCol = widths.length;
+        const bdr = (n) => '<w:' + n + ' w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/>';
+        let t = '<w:tbl><w:tblPr><w:tblW w:w="' + TW + '" w:type="dxa"/><w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(bdr).join('') +
+          '</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr>' +
+          '<w:tblGrid>' + widths.map((w) => '<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>';
+        b.rows.forEach((row, ri) => {
+          const header = ri === 0;
+          t += '<w:tr><w:trPr><w:cantSplit/>' + (header ? '<w:tblHeader/>' : '') + '</w:trPr>';
+          for (let c = 0; c < nCol; c++) {
+            t += '<w:tc><w:tcPr><w:tcW w:w="' + widths[c] + '" w:type="dxa"/>' + (header ? '<w:shd w:val="clear" w:color="auto" w:fill="DCE6F5"/>' : '') + '</w:tcPr>' +
+              dPara(dRuns(row[c] && row[c].length ? row[c] : [{ t: '' }], 20, { bold: header }), { after: 0, line: 252 }) + '</w:tc>';
+          }
+          t += '</w:tr>';
+        });
+        body.push(t + '</w:tbl>');
+        body.push(dPara('', { after: 100 }));
+      }
+      first = false;
+    });
+
+    const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    const sect = '<w:sectPr><w:footerReference w:type="default" r:id="rId2"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="567" w:gutter="0"/></w:sectPr>';
+    const frun = (inner) => '<w:r><w:rPr>' + RPR + '<w:color w:val="808080"/><w:sz w:val="18"/></w:rPr>' + inner + '</w:r>';
+    const footer = X + '<w:ftr ' + NS + '><w:p><w:pPr><w:jc w:val="center"/></w:pPr>' +
+      frun('<w:t xml:space="preserve">Halaman </w:t>') + frun('<w:fldChar w:fldCharType="begin"/>') + frun('<w:instrText xml:space="preserve"> PAGE </w:instrText>') +
+      frun('<w:fldChar w:fldCharType="separate"/>') + frun('<w:t>1</w:t>') + frun('<w:fldChar w:fldCharType="end"/>') + '</w:p></w:ftr>';
+    const styles = X + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr>' +
+      '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:lang w:val="id-ID"/></w:rPr></w:rPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>';
+    const core = X + '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+      '<dc:title>' + esc(title) + '</dc:title><dc:creator>El Ai</dc:creator></cp:coreProperties>';
+
+    return zip([
+      { name: '[Content_Types].xml', data: X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+        '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+        '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
+        '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>' },
+      { name: '_rels/.rels', data: X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + REL + '/officeDocument" Target="word/document.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>' },
+      { name: 'word/_rels/document.xml.rels', data: X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + REL + '/styles" Target="styles.xml"/>' +
+        '<Relationship Id="rId2" Type="' + REL + '/footer" Target="footer1.xml"/></Relationships>' },
+      { name: 'word/document.xml', data: X + '<w:document ' + NS + '><w:body>' + body.join('') + sect + '</w:body></w:document>' },
+      { name: 'word/styles.xml', data: styles },
+      { name: 'word/footer1.xml', data: footer },
+      { name: 'docProps/core.xml', data: core },
+    ]);
+  }
+
+  const api = { buildPdf, buildDocxFromText, buildDocxFromImages, buildPdfFromMarkdown, buildDocxFromMarkdown, mdTitle, _parseMd: parseMd, _zip: zip, _crc32: crc32 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElConvert = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -8,6 +8,7 @@
     login:  { title: 'Selamat datang kembali', sub: 'Masuk dengan email dan kata sandimu.', btn: 'Masuk', sw: 'Belum punya akun? ', swBtn: 'Daftar gratis' },
     signup: { title: 'Buat akun El Ai', sub: 'Gratis, dapat 100 token setiap hari.', btn: 'Buat akun', sw: 'Sudah punya akun? ', swBtn: 'Masuk' },
     forgot: { title: 'Lupa kata sandi?', sub: 'Masukkan email akunmu. Kami kirim kode 6 angka untuk mengatur ulang kata sandi.', btn: 'Kirim kode', sw: 'Ingat kata sandimu? ', swBtn: 'Kembali masuk' },
+    verify: { title: 'Verifikasi email', sub: 'Masukkan kode 6 angka yang kami kirim ke', btn: 'Verifikasi & buat akun', sw: 'Salah email? ', swBtn: 'Ulangi daftar' },
     reset:  { title: 'Atur ulang kata sandi', sub: 'Masukkan kode dari emailmu dan kata sandi baru.', btn: 'Simpan kata sandi baru', sw: 'Salah email? ', swBtn: 'Ulangi' },
   };
   const show = (name, on) => { const f = form.querySelector(`[data-f="${name}"]`); if (f) f.hidden = !on; };
@@ -21,15 +22,16 @@
     $('#title').textContent = c.title; $('#sub').textContent = c.sub; submit.textContent = c.btn;
     $('#switch').firstChild.textContent = c.sw; $('#switchBtn').textContent = c.swBtn;
     show('name', m === 'signup'); show('birth', m === 'signup');
-    show('otp', m === 'reset'); show('password', m !== 'forgot');
+    show('otp', m === 'reset' || m === 'verify'); show('password', m !== 'forgot' && m !== 'verify');
     $('#forgotWrap').hidden = m !== 'login';
-    $('#resendWrap').hidden = m !== 'reset';
-    $('#email').readOnly = m === 'reset';
+    $('#resendWrap').hidden = m !== 'reset' && m !== 'verify';
+    $('#email').readOnly = m === 'reset' || m === 'verify';
+    if (m === 'verify') $('#sub').textContent = c.sub + ' ' + $('#email').value.trim() + '.';
     $('#password').autocomplete = m === 'login' ? 'current-password' : 'new-password';
     $('label[for="password"]').textContent = m === 'reset' ? 'Kata sandi baru' : 'Kata sandi';
     clearErrors();
     if (auth) history.replaceState(null, '', m === 'signup' ? '#daftar' : '#masuk');
-    if (m === 'reset') { $('#otp').focus(); }
+    if (m === 'reset' || m === 'verify') { $('#otp').focus(); }
   }
   function clearErrors() {
     formErr.hidden = true; formOk.hidden = true;
@@ -77,10 +79,10 @@
   $('#tabLogin').onclick = () => setMode('login');
   $('#tabSignup').onclick = () => setMode('signup');
   $('#forgotBtn').onclick = () => setMode('forgot');
-  $('#switchBtn').onclick = () => setMode(mode === 'login' ? 'signup' : mode === 'signup' ? 'login' : mode === 'forgot' ? 'login' : 'forgot');
+  $('#switchBtn').onclick = () => { clearInterval(timer); setMode(mode === 'login' ? 'signup' : mode === 'signup' ? 'login' : mode === 'forgot' ? 'login' : mode === 'verify' ? 'signup' : 'forgot'); };
   $('#resendBtn').onclick = async () => {
     clearErrors();
-    const r = await post({ action: 'forgot', email: $('#email').value.trim() });
+    const r = await post({ action: mode === 'verify' ? 'signup_resend' : 'forgot', email: $('#email').value.trim() });
     if (r.ok) { showOk('Kode baru sudah dikirim.'); startCountdown(r.j.resendIn || 60); } else showError(r.j.error || 'Gagal mengirim kode.');
   };
   $('#pwToggle').onclick = (e) => {
@@ -98,20 +100,27 @@
 
     const data = { action: mode, email: $('#email').value.trim(), password: $('#password').value };
     if (mode === 'signup') { data.name = $('#name').value.trim(); data.birth = $('#birth').value; }
-    if (mode === 'reset') data.otp = $('#otp').value;
+    if (mode === 'reset' || mode === 'verify') data.otp = $('#otp').value;
 
     // pemeriksaan cepat di browser (server tetap memeriksa ulang)
     if (mode === 'signup' && data.name.length < 2) return showError('Isi namamu (minimal 2 huruf).', 'name');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(data.email)) return showError('Alamat email belum benar.', 'email');
     if (mode === 'signup' && !data.birth) return showError('Isi tanggal lahirmu.', 'birth');
-    if (mode === 'reset' && !/^\d{6}$/.test(data.otp)) return showError('Masukkan kode 6 angka dari emailmu.', 'otp');
-    if (data.password.length < 8) return showError(mode === 'reset' ? 'Kata sandi baru minimal 8 karakter.' : 'Kata sandi minimal 8 karakter.', 'password');
+    if ((mode === 'reset' || mode === 'verify') && !/^\d{6}$/.test(data.otp)) return showError('Masukkan kode 6 angka dari emailmu.', 'otp');
+    if (mode !== 'verify' && data.password.length < 8) return showError(mode === 'reset' ? 'Kata sandi baru minimal 8 karakter.' : 'Kata sandi minimal 8 karakter.', 'password');
 
     submit.disabled = true;
     const label = submit.textContent; submit.textContent = 'Memproses…';
     try {
       const r = await post(data);
       if (!r.ok) { showError(r.j.error || 'Terjadi kesalahan. Coba lagi.', r.j.field); return; }
+      if (mode === 'signup' && r.j.needOtp) {
+        setMode('verify');
+        $('#otpHint').textContent = 'Kode berlaku 10 menit. Cek juga folder spam.';
+        showOk(r.j.message || 'Kode sudah dikirim ke emailmu.');
+        startCountdown(r.j.resendIn || 60);
+        return;
+      }
       if (mode === 'reset') {
         clearInterval(timer); $('#password').value = ''; $('#otp').value = '';
         setMode('login'); showOk('Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru.');
@@ -122,7 +131,7 @@
     } catch {
       showError('Tidak bisa terhubung ke server. Periksa koneksimu.');
     } finally {
-      submit.disabled = false; submit.textContent = (mode === 'login' || mode === 'signup' || mode === 'reset') ? copy[mode].btn : label;
+      submit.disabled = false; submit.textContent = (mode === 'login' || mode === 'signup' || mode === 'reset' || mode === 'verify') ? copy[mode].btn : label;
     }
   });
 

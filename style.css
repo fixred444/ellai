@@ -448,3 +448,8 @@ body.booting .app { visibility: hidden; }
 .proof img { display: block; max-width: 100%; max-height: 240px; margin: 0 0 12px; border: 1px solid var(--line); border-radius: var(--r-m); }
 .proof img[hidden], .gate-msg[hidden] { display: none; }
 .m-list a { color: var(--accent); margin-left: 6px; font-weight: 500; }
+
+/* unduh jawaban jadi PDF / Word */
+.msg.streaming .dl-row { display: none; }
+button.dl-btn { border: 0; cursor: pointer; font-family: inherit; }
+.conv-note { margin: 2px 0 0; font-size: 11.5px; line-height: 1.3; color: var(--muted); max-width: 150px; }

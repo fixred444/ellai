@@ -14,8 +14,10 @@
 
   const STORE = 'elai.chats.v1' + (window.ELAI_USER ? '.' + window.ELAI_USER.id : '');
   const MAX_CHATS = 40;
-  const MAX_ATTACH = 5;          // total lampiran per pesan
-  const MAX_IMAGES = 3;          // batas gambar per permintaan
+  const MAX_ATTACH = 10;         // total lampiran per pesan
+  const MAX_IMAGES = 3;          // foto untuk tanya jawab (batas model gambar)
+  const MAX_CONVERT_IMAGES = 10; // foto untuk Jadikan PDF / Word (diproses di browser, tidak dikirim sekaligus)
+  const MAX_TEXT_FILES = 5;      // file teks/PDF per pesan
   const MAX_FILE_BYTES = 15 * 1024 * 1024;
   const MAX_CHARS_PER_FILE = 12000;
   const MAX_CHARS_TOTAL = 30000;
@@ -173,9 +175,13 @@
     return t;
   }
 
+  const msgMap = new WeakMap();
+  const docLabel = (k) => (k === 'both' ? 'PDF dan Word' : k === 'pdf' ? 'PDF' : 'Word');
+
   function messageEl(m) {
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + m.role;
+    msgMap.set(wrap, m);
     if (m.role === 'user') {
       const atts = attsEl(m);
       if (atts) wrap.appendChild(atts);
@@ -195,10 +201,19 @@
       content.innerHTML = window.ElMd.render(clean(m.content));
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
-      actions.innerHTML = '<button type="button" class="act" data-copy-msg>Salin</button>';
+      actions.innerHTML = '<button type="button" class="act" data-copy-msg>Salin</button>' +
+        (m.sys ? '' : '<button type="button" class="act" data-dl="pdf">PDF</button><button type="button" class="act" data-dl="docx">Word</button>');
       const tag = modelTag(m);
       if (tag) actions.appendChild(tag);
-      body.append(content, actions);
+      if (m.doc) {
+        const row = document.createElement('div');
+        row.className = 'dl-row';
+        row.innerHTML = (m.doc !== 'word' ? '<button type="button" class="dl-btn" data-dl="pdf">Unduh PDF</button>' : '') +
+          (m.doc !== 'pdf' ? '<button type="button" class="dl-btn" data-dl="docx">Unduh Word</button>' : '');
+        body.append(content, row, actions);
+      } else {
+        body.append(content, actions);
+      }
       wrap.append(logo, body);
     }
     return wrap;
@@ -309,20 +324,26 @@
         toast('Format ' + (file.name.split('.').pop() || 'ini') + ' belum didukung. Gunakan foto, PDF, atau file teks/kode.');
         continue;
       }
-      if (isImage && pending.filter((a) => a.kind === 'image').length >= MAX_IMAGES) {
-        toast('Maksimal ' + MAX_IMAGES + ' gambar per pesan.');
+      if (isImage && pending.filter((a) => a.kind === 'image').length >= MAX_CONVERT_IMAGES) {
+        toast('Maksimal ' + MAX_CONVERT_IMAGES + ' foto per pesan.');
+        continue;
+      }
+      if (!isImage && pending.filter((a) => a.kind === 'text').length >= MAX_TEXT_FILES) {
+        toast('Maksimal ' + MAX_TEXT_FILES + ' file per pesan.');
         continue;
       }
 
       const item = { id: uid(), name: file.name, loading: true, kind: isImage ? 'image' : 'text' };
       if (isImage) item.file = file;
       pending.push(item);
+      if (isImage && pending.filter((a) => a.kind === 'image').length === MAX_IMAGES + 1) {
+        toast('Lebih dari ' + MAX_IMAGES + ' foto hanya bisa dijadikan PDF / Word (bukan untuk tanya jawab).');
+      }
       renderTray();
 
       try {
         if (isImage) {
           const { dataUrl, thumb } = await compressImage(file);
-          if (usedImageChars() + dataUrl.length > MAX_IMAGE_TOTAL) throw new Error('Total ukuran gambar terlalu besar. Kirim lebih sedikit gambar sekaligus.');
           Object.assign(item, { dataUrl, thumb });
         } else {
           let text, truncated = false;
@@ -381,6 +402,12 @@
       const cv = document.createElement('div');
       cv.className = 'tray-convert';
       cv.innerHTML = '<button type="button" class="conv-btn" data-convert="Jadikan PDF">Jadikan PDF</button><button type="button" class="conv-btn" data-convert="Jadikan Word">Jadikan Word</button>';
+      if (pending.filter((a) => a.kind === 'image').length > MAX_IMAGES) {
+        const note = document.createElement('p');
+        note.className = 'conv-note';
+        note.textContent = 'Lebih dari ' + MAX_IMAGES + ' foto: khusus PDF / Word';
+        cv.appendChild(note);
+      }
       el.tray.appendChild(cv);
     }
   }
@@ -438,6 +465,11 @@
     if (busy) { stop(); return; }
     const text = el.input.value.trim();
     if ((!text && !pending.length) || pending.some((a) => a.loading)) return;
+    const imgCount = pending.filter((a) => a.kind === 'image').length;
+    if (imgCount && !convertCommand(text)) {
+      if (imgCount > MAX_IMAGES) { toast('Untuk tanya jawab maksimal ' + MAX_IMAGES + ' foto. Hapus sebagian, atau ketuk Jadikan PDF / Jadikan Word.'); return; }
+      if (usedImageChars() > MAX_IMAGE_TOTAL) { toast('Total ukuran foto terlalu besar. Kirim lebih sedikit foto sekaligus.'); return; }
+    }
     const atts = pending;
     pending = [];
     el.input.value = '';
@@ -463,6 +495,9 @@
         text += '\n\n[File: ' + f.name + '] (isi tidak disertakan lagi)';
       }
     });
+    if (m.doc && withFiles) {
+      text += '\n\n[Catatan untuk El Ai: pengguna ingin hasilnya jadi file ' + docLabel(m.doc) + '. El Ai otomatis menyediakan tombol Unduh PDF/Word di bawah jawabanmu, jadi JANGAN bilang kamu tidak bisa membuat file dan jangan menyuruh pengguna menyalin ke Word. Langsung tulis isi dokumen yang lengkap dan rapi dalam Markdown, mulai dari satu judul (#), lalu subjudul (##/###), paragraf, daftar, dan tabel bila membantu. Tulis rumus/persamaan dengan teks biasa (contoh: 6CO2 + 6H2O → C6H12O6 + 6O2), bukan LaTeX. Jangan menulis kalimat pembuka seperti "Berikut materinya".]';
+    }
     return text;
   }
 
@@ -814,7 +849,7 @@
     el.title.textContent = chat.title;
     el.thread.appendChild(messageEl(userMsg));
 
-    const reply = { role: 'assistant', content: '' };
+    const reply = { role: 'assistant', content: '', sys: true };
     const node = messageEl(reply);
     const contentEl = node.querySelector('.content');
     const status = (t) => { contentEl.innerHTML = window.ElMd.render(t); };
@@ -897,17 +932,90 @@
     scrollDown(true);
   }
 
+  /* ---------- jawaban -> PDF / Word ---------- */
+  // Deteksi permintaan seperti "buatkan materi perkecambahan dalam word" atau "jadikan pdf" (tanpa foto).
+  function docCommand(text) {
+    const t = (text || '').toLowerCase().trim();
+    if (!t || t.length > 600) return null;
+    const pdf = /\bpdf\b/.test(t);
+    const word = /\b(word|docx?)\b/.test(t);
+    if (!pdf && !word) return null;
+    if (/\b(cara|bagaimana|gimana|kenapa|mengapa|apa itu|apa bedanya|bedanya|perbedaan)\b/.test(t)) return null;
+    if (!/\b(jadi|jadikan|jadiin|ubah|ganti|convert|konversi|simpan|buat|buatkan|bikin|bikinin|bikinkan|export|ekspor|unduh|download|kirim|tulis|tuliskan|susun|susunkan|cetak|minta|mau|ingin|dalam|ke|format|bentuk|berupa)\b/.test(t)) return null;
+    const rest = t
+      .replace(/\b(tolong|dong|ya|yah|deh|lah|kak|el|ai|jadikan|jadiin|jadi|ubah|ganti|convert|konversi|simpan|buat|buatkan|bikin|bikinin|bikinkan|export|ekspor|unduh|download|kirim|ke|dalam|format|bentuk|berupa|file|dokumen|pdf|word|docx?|ms|microsoft|dan|atau|juga|sebagai|yang|ini|itu|tadi|barusan|sebelumnya|di atas|diatas|jawaban|balasan|isi|hasil|nya|saja|aja|sekarang|bisa|mau|minta|materi|ingin)\b/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+    return { kind: pdf && word ? 'both' : pdf ? 'pdf' : 'word', fromLast: rest.length === 0 };
+  }
+
+  function lastAnswerIndex(chat) {
+    for (let i = chat.messages.length - 1; i >= 0; i--) {
+      const m = chat.messages[i];
+      if (m.role === 'assistant' && !m.sys && m.content && m.content.trim().length > 20) return i;
+    }
+    return -1;
+  }
+
+  // "jadikan pdf" tanpa foto -> jawaban El Ai yang terakhir dijadikan file (tidak memanggil AI lagi)
+  function convertLast(text, dc) {
+    const chat = current();
+    const idx = chat ? lastAnswerIndex(chat) : -1;
+    if (idx < 0) {
+      toast('Belum ada jawaban yang bisa dijadikan file. Minta dulu, misalnya: "buatkan materi perkecambahan dalam Word".');
+      el.input.value = text; autosize();
+      return;
+    }
+    const userMsg = { role: 'user', content: text };
+    const reply = { role: 'assistant', content: 'Siap! Jawaban sebelumnya bisa diunduh sebagai ' + docLabel(dc.kind) + '. Ketuk tombol di bawah.', doc: dc.kind, docFrom: idx, sys: true };
+    chat.messages.push(userMsg, reply);
+    chat.updated = Date.now();
+    el.welcome.hidden = true;
+    el.thread.appendChild(messageEl(userMsg));
+    el.thread.appendChild(messageEl(reply));
+    save(); renderSidebar(); scrollDown(true);
+  }
+
+  function downloadDoc(btn) {
+    const wrap = btn.closest('.msg');
+    const m = wrap && msgMap.get(wrap);
+    if (!m) return;
+    const chat = current();
+    let src = m.content;
+    if (m.docFrom != null && chat && chat.messages[m.docFrom]) src = chat.messages[m.docFrom].content;
+    src = clean(src || '').trim();
+    if (!src) { toast('Tidak ada isi untuk diunduh.'); return; }
+    const kind = btn.dataset.dl === 'pdf' ? 'pdf' : 'docx';
+    try {
+      const title = window.ElConvert.mdTitle(src) || (chat && chat.title) || 'Dokumen El Ai';
+      const data = kind === 'pdf'
+        ? window.ElConvert.buildPdfFromMarkdown(src, { title })
+        : window.ElConvert.buildDocxFromMarkdown(src, { title });
+      const mime = kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'dokumen-el-ai';
+      const url = URL.createObjectURL(new Blob([data], { type: mime }));
+      const a = document.createElement('a');
+      a.href = url; a.download = slug + '.' + kind;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (err) {
+      toast('Gagal membuat file: ' + ((err && err.message) || 'coba lagi.'));
+    }
+  }
+
   /* ---------- chat flow ---------- */
   async function send(text, atts) {
     if (busy) return;
     const conv = atts.some((a) => a.kind === 'image' && a.file) ? convertCommand(text) : null;
     if (conv) { handleConvert(text, atts, conv); return; }
+    const dc = atts.some((a) => a.kind === 'image') ? null : docCommand(text);
+    if (dc && dc.fromLast && !atts.length) { convertLast(text, dc); return; }
     const cmd = atts.length ? null : lightCommand(text);
     if (cmd) { handleLight(text, cmd); return; }
     let chat = current();
     if (!chat) chat = createChat();
 
     const userMsg = { role: 'user', content: text };
+    if (dc) userMsg.doc = dc.kind;
     if (atts.length) {
       userMsg.atts = atts.map((a) => ({ kind: a.kind, name: a.name, thumb: a.kind === 'image' ? a.thumb : undefined }));
       const files = atts.filter((a) => a.kind === 'text').map((a) => ({ name: a.name, text: a.text, truncated: !!a.truncated }));
@@ -923,6 +1031,7 @@
     chat.updated = Date.now();
     const history = chat.messages.slice();
     const reply = { role: 'assistant', content: '' };
+    if (userMsg.doc) reply.doc = userMsg.doc;
     chat.messages.push(reply);
     save(); renderSidebar();
 
@@ -951,7 +1060,7 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: buildApiMessages(history), tier }),
+        body: JSON.stringify({ messages: buildApiMessages(history), tier, doc: !!userMsg.doc }),
         signal: controller.signal,
       });
 
@@ -1008,6 +1117,8 @@
         box.textContent = (err && err.message) || 'Terjadi kesalahan jaringan.';
         contentEl.appendChild(box);
         node.querySelector('.msg-actions').remove();
+        const dlr = node.querySelector('.dl-row');
+        if (dlr) dlr.remove();
       }
     } finally {
       if (raf) clearTimeout(raf);
@@ -1038,6 +1149,8 @@
       copy(code.textContent, codeBtn, 'Salin');
       return;
     }
+    const dlBtn = e.target.closest('[data-dl]');
+    if (dlBtn) { downloadDoc(dlBtn); return; }
     const msgBtn = e.target.closest('[data-copy-msg]');
     if (msgBtn) {
       const content = msgBtn.closest('.msg-body').querySelector('.content');
