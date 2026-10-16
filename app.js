@@ -176,7 +176,13 @@
   }
 
   const msgMap = new WeakMap();
-  const docLabel = (k) => (k === 'both' ? 'PDF dan Word' : k === 'pdf' ? 'PDF' : 'Word');
+  // m.doc berisi jenis file yang diminta, mis. 'pdf', 'docx', 'pptx', atau gabungan 'pdf+pptx' (nilai lama: 'word', 'both')
+  const KIND_LABEL = { pdf: 'PDF', docx: 'Word', pptx: 'PowerPoint' };
+  const docKinds = (k) => (k === 'both' ? ['pdf', 'docx'] : k === 'word' ? ['docx'] : String(k || '').split('+').filter((x) => KIND_LABEL[x]));
+  const docLabel = (k) => {
+    const l = docKinds(k).map((x) => KIND_LABEL[x]);
+    return l.length > 1 ? l.slice(0, -1).join(', ') + ' dan ' + l[l.length - 1] : (l[0] || 'dokumen');
+  };
 
   function messageEl(m) {
     const wrap = document.createElement('div');
@@ -202,14 +208,13 @@
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
       actions.innerHTML = '<button type="button" class="act" data-copy-msg>Salin</button>' +
-        (m.sys ? '' : '<button type="button" class="act" data-dl="pdf">PDF</button><button type="button" class="act" data-dl="docx">Word</button>');
+        (m.sys ? '' : '<button type="button" class="act" data-dl="pdf">PDF</button><button type="button" class="act" data-dl="docx">Word</button><button type="button" class="act" data-dl="pptx">PPT</button>');
       const tag = modelTag(m);
       if (tag) actions.appendChild(tag);
       if (m.doc) {
         const row = document.createElement('div');
         row.className = 'dl-row';
-        row.innerHTML = (m.doc !== 'word' ? '<button type="button" class="dl-btn" data-dl="pdf">Unduh PDF</button>' : '') +
-          (m.doc !== 'pdf' ? '<button type="button" class="dl-btn" data-dl="docx">Unduh Word</button>' : '');
+        row.innerHTML = docKinds(m.doc).map((k) => '<button type="button" class="dl-btn" data-dl="' + k + '">Unduh ' + KIND_LABEL[k] + '</button>').join('');
         body.append(content, row, actions);
       } else {
         body.append(content, actions);
@@ -453,7 +458,26 @@
     el.send.disabled = !busy && (!hasContent || loading);
     el.send.setAttribute('aria-label', busy ? 'Hentikan' : 'Kirim');
   }
-  el.input.addEventListener('input', () => { autosize(); syncSend(); });
+  /* ---------- menu perintah "/" ---------- */
+  const COMMANDS = [{ cmd: '/game', desc: 'Main cambuk, klik untuk mencambuk (seru-seruan)' }];
+  const slashMenu = $('#slashMenu');
+  function updateSlash() {
+    const v = el.input.value;
+    const list = /^\/[a-z]*$/i.test(v) ? COMMANDS.filter((c) => c.cmd.startsWith(v.toLowerCase())) : [];
+    if (!list.length) { slashMenu.hidden = true; return; }
+    slashMenu.innerHTML = list.map((c) => '<button type="button" class="slash-item" role="option" data-cmd="' + c.cmd + '"><b>' + c.cmd + '</b><span>' + c.desc + '</span></button>').join('');
+    slashMenu.hidden = false;
+  }
+  slashMenu.addEventListener('mousedown', (e) => e.preventDefault());
+  slashMenu.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cmd]');
+    if (!b) return;
+    el.input.value = b.dataset.cmd;
+    slashMenu.hidden = true;
+    el.form.requestSubmit();
+  });
+  el.input.addEventListener('input', () => { autosize(); syncSend(); updateSlash(); });
+  el.input.addEventListener('blur', () => { setTimeout(() => { slashMenu.hidden = true; }, 120); });
   el.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
@@ -473,7 +497,7 @@
     const atts = pending;
     pending = [];
     el.input.value = '';
-    autosize(); renderTray(); syncSend();
+    autosize(); renderTray(); syncSend(); slashMenu.hidden = true;
     send(text, atts);
   });
   $('#chips').addEventListener('click', (e) => {
@@ -496,7 +520,16 @@
       }
     });
     if (m.doc && withFiles) {
-      text += '\n\n[Catatan untuk El Ai: pengguna ingin hasilnya jadi file ' + docLabel(m.doc) + '. El Ai otomatis menyediakan tombol Unduh PDF/Word di bawah jawabanmu, jadi JANGAN bilang kamu tidak bisa membuat file dan jangan menyuruh pengguna menyalin ke Word. Langsung tulis isi dokumen yang lengkap dan rapi dalam Markdown, mulai dari satu judul (#), lalu subjudul (##/###), paragraf, daftar, dan tabel bila membantu. Tulis rumus/persamaan dengan teks biasa (contoh: 6CO2 + 6H2O → C6H12O6 + 6O2), bukan LaTeX. Jangan menulis kalimat pembuka seperti "Berikut materinya".]';
+      const kinds = docKinds(m.doc);
+      const slides = kinds.includes('pptx');
+      const docs = kinds.some((k) => k !== 'pptx');
+      let note = '[Catatan untuk El Ai: pengguna ingin hasilnya jadi file ' + docLabel(m.doc) + '. El Ai otomatis menyediakan tombol unduh di bawah jawabanmu, jadi JANGAN bilang kamu tidak bisa membuat file dan jangan menyuruh pengguna menyalin ke aplikasi lain. Jangan menulis kalimat pembuka seperti "Berikut materinya" atau penutup seperti "Semoga membantu". Tulis rumus/persamaan dengan teks biasa (contoh: 6CO2 + 6H2O → C6H12O6 + 6O2), bukan LaTeX. ';
+      if (slides && !docs) {
+        note += 'Tulis sebagai KERANGKA PRESENTASI dalam Markdown: satu judul (#), satu kalimat ringkas tentang isi presentasi, lalu tiap slide diawali "## Judul slide". Buat 8-12 slide dengan alur: pengantar/tujuan, beberapa slide isi, contoh atau studi kasus, ringkasan, kesimpulan. Tiap slide berisi 3-6 poin SINGKAT (maksimal sekitar 12 kata per poin, bukan paragraf panjang). Pakai tabel Markdown untuk perbandingan dan blok kode bila perlu. Jangan memakai emoji.]';
+      } else {
+        note += 'Tulis seperti modul belajar yang rapi dan lengkap dalam Markdown: satu judul (#), satu paragraf pembuka, lalu 5-8 bagian dengan subjudul (##). Tiap bagian berisi penjelasan yang jelas (paragraf pendek dan daftar poin), contoh nyata, dan **tebal** untuk istilah penting. Sertakan tabel ringkasan bila ada perbandingan, bagian "Kesimpulan", dan "Latihan Soal" singkat (3-5 soal) bila ini materi pelajaran. Jangan memakai emoji.' + (slides ? ' Jadikan judul bagian (##) sebagai judul slide, karena isi yang sama juga akan dibuat jadi PowerPoint.' : '') + ']';
+      }
+      text += '\n\n' + note;
     }
     return text;
   }
@@ -939,13 +972,14 @@
     if (!t || t.length > 600) return null;
     const pdf = /\bpdf\b/.test(t);
     const word = /\b(word|docx?)\b/.test(t);
-    if (!pdf && !word) return null;
+    const ppt = /\b(pptx?|power ?point|slides?|presentasi)\b/.test(t);
+    if (!pdf && !word && !ppt) return null;
     if (/\b(cara|bagaimana|gimana|kenapa|mengapa|apa itu|apa bedanya|bedanya|perbedaan)\b/.test(t)) return null;
     if (!/\b(jadi|jadikan|jadiin|ubah|ganti|convert|konversi|simpan|buat|buatkan|bikin|bikinin|bikinkan|export|ekspor|unduh|download|kirim|tulis|tuliskan|susun|susunkan|cetak|minta|mau|ingin|dalam|ke|format|bentuk|berupa)\b/.test(t)) return null;
     const rest = t
-      .replace(/\b(tolong|dong|ya|yah|deh|lah|kak|el|ai|jadikan|jadiin|jadi|ubah|ganti|convert|konversi|simpan|buat|buatkan|bikin|bikinin|bikinkan|export|ekspor|unduh|download|kirim|ke|dalam|format|bentuk|berupa|file|dokumen|pdf|word|docx?|ms|microsoft|dan|atau|juga|sebagai|yang|ini|itu|tadi|barusan|sebelumnya|di atas|diatas|jawaban|balasan|isi|hasil|nya|saja|aja|sekarang|bisa|mau|minta|materi|ingin)\b/g, '')
+      .replace(/\b(tolong|dong|ya|yah|deh|lah|kak|el|ai|jadikan|jadiin|jadi|ubah|ganti|convert|konversi|simpan|buat|buatkan|bikin|bikinin|bikinkan|export|ekspor|unduh|download|kirim|ke|dalam|format|bentuk|berupa|file|dokumen|pdf|word|docx?|ppt|pptx|powerpoint|power point|point|power|slides?|presentasi|ms|microsoft|dan|atau|juga|sebagai|yang|ini|itu|tadi|barusan|sebelumnya|di atas|diatas|jawaban|balasan|isi|hasil|nya|saja|aja|sekarang|bisa|mau|minta|materi|ingin)\b/g, '')
       .replace(/[^a-z0-9]+/g, ' ').trim();
-    return { kind: pdf && word ? 'both' : pdf ? 'pdf' : 'word', fromLast: rest.length === 0 };
+    return { kind: [pdf && 'pdf', word && 'docx', ppt && 'pptx'].filter(Boolean).join('+'), fromLast: rest.length === 0 };
   }
 
   function lastAnswerIndex(chat) {
@@ -984,13 +1018,15 @@
     if (m.docFrom != null && chat && chat.messages[m.docFrom]) src = chat.messages[m.docFrom].content;
     src = clean(src || '').trim();
     if (!src) { toast('Tidak ada isi untuk diunduh.'); return; }
-    const kind = btn.dataset.dl === 'pdf' ? 'pdf' : 'docx';
+    const kind = ['pdf', 'docx', 'pptx'].includes(btn.dataset.dl) ? btn.dataset.dl : 'docx';
     try {
       const title = window.ElConvert.mdTitle(src) || (chat && chat.title) || 'Dokumen El Ai';
       const data = kind === 'pdf'
         ? window.ElConvert.buildPdfFromMarkdown(src, { title })
-        : window.ElConvert.buildDocxFromMarkdown(src, { title });
-      const mime = kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        : kind === 'pptx'
+          ? window.ElConvert.buildPptxFromMarkdown(src, { title })
+          : window.ElConvert.buildDocxFromMarkdown(src, { title });
+      const mime = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }[kind];
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'dokumen-el-ai';
       const url = URL.createObjectURL(new Blob([data], { type: mime }));
       const a = document.createElement('a');
@@ -1005,6 +1041,7 @@
   /* ---------- chat flow ---------- */
   async function send(text, atts) {
     if (busy) return;
+    if (!atts.length && /^\/game\s*$/i.test(text.trim())) { if (window.ElGame) window.ElGame.open(); else toast('Permainan belum siap, coba muat ulang halaman.'); return; }
     const conv = atts.some((a) => a.kind === 'image' && a.file) ? convertCommand(text) : null;
     if (conv) { handleConvert(text, atts, conv); return; }
     const dc = atts.some((a) => a.kind === 'image') ? null : docCommand(text);

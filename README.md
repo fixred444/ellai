@@ -123,3 +123,7 @@ Edit konstanta `SYSTEM_PROMPT` di `api/chat.js`.
 - Kode berlaku 10 menit, maks. 5 kali salah, kirim ulang tiap 60 detik, maks. 5 kode per email per jam.
 - Memakai email pengirim yang sama dengan fitur lupa kata sandi (panel admin, Gmail + App Password). **Kalau email pengirim belum diatur, pendaftaran ditolak** dengan pesan untuk menghubungi admin, jadi atur dulu sebelum deploy.
 - Akun yang daftar lewat OTP ditandai "Terverifikasi lewat kode OTP" di panel admin. Akun lama tetap bisa masuk seperti biasa.
+
+## Pembaruan v8
+- **Word / PDF / PowerPoint**: tampilan dokumen dirapikan (judul, subjudul, tabel berwarna, kutipan, nomor halaman). Tombol **PPT** baru di bawah tiap jawaban; minta lewat chat, mis. "buatkan presentasi tentang fotosintesis" atau "jadikan ppt". Tiap `## judul` jadi satu slide, ada slide judul, agenda, dan penutup. Semua dibuat di browser (`convert.js`, tanpa library).
+- **/game**: ketik `/game` di kolom pesan (menu perintah muncul saat mengetik `/`). Cambuk di tengah layar, klik untuk mencambuk: ada suara "ctar" (Web Audio, tanpa file suara), sedikit asap/debu, dan hitungan cambukan. Esc atau tombol X untuk keluar (`game.js`, `game.css`).
