@@ -104,3 +104,9 @@ Edit konstanta `SYSTEM_PROMPT` di `api/chat.js`.
 - **PDF** (yang berisi teks) dan **file teks/kode** (txt, md, csv, json, js, py, dst.): isinya dibaca di browser lalu disisipkan ke pesan. Dibatasi sekitar 12.000 karakter per file.
 - PDF hasil scan tidak punya teks; kirim sebagai foto.
 - Foto hanya disimpan di memori selama halaman terbuka (riwayat hanya menyimpan thumbnail).
+
+## Tampilan Liquid Glass & Pratinjau HTML
+
+- `glass.css` adalah lapisan tampilan kaca (dimuat setelah `style.css` dan `auth.css`). Hapus tag `<link>`-nya di `index.html` / `masuk.html` untuk kembali ke gaya datar. Warna dan bahan diatur lewat variabel di bagian atas file.
+- `preview.js`: blok kode `html`/`svg` di jawaban AI otomatis punya tombol **Pratinjau**. Hasilnya tampil di `<iframe sandbox>` tanpa `allow-same-origin`, jadi tidak bisa membaca akun/cookie El Ai. Ada tombol ukuran ponsel/penuh, muat ulang, dan unduh `.html`. Blok `css`/`js` terpisah di jawaban yang sama otomatis digabung jika HTML memanggil `style.css`/`script.js`.
+- System prompt di `api/chat.js` meminta El Ai menulis satu file HTML lengkap untuk permintaan halaman web, supaya pratinjau langsung jalan.

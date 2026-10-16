@@ -224,6 +224,6 @@
       if (me.user.role === 'admin' && old && !localStorage.getItem(k)) localStorage.setItem(k, old);
     } catch {}
     renderAcct(); renderQuota(); showGate();
-    loadScripts(['markdown.js', 'convert.js', 'study.js', 'app.js'], () => document.body.classList.remove('booting'));
+    loadScripts(['markdown.js', 'preview.js', 'convert.js', 'study.js', 'app.js'], () => document.body.classList.remove('booting'));
   })();
 })();

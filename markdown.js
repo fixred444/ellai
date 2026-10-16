@@ -45,10 +45,22 @@
     return s.replace(/\u0001(\d+)\u0001/g, (m, i) => '<code>' + codes[i] + '</code>');
   }
 
+  // Blok HTML/SVG mendapat tombol "Pratinjau" (ditangani preview.js).
+  function previewable(b) {
+    const l = String(b.lang || '').toLowerCase();
+    if (/^(html?|xhtml|svg)$/.test(l)) return true;
+    if (l) return false;
+    return /^\s*(<!doctype html|<html[\s>])/i.test(String(b.code).slice(0, 200));
+  }
+
   function codeBlock(b) {
     const lang = esc(b.lang || 'kode');
+    const prev = previewable(b)
+      ? '<button type="button" class="copy-code preview-code" data-preview-code>' +
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg>Pratinjau</button>'
+      : '';
     return '<div class="code"><div class="code-head"><span>' + lang + '</span>' +
-      '<button type="button" class="copy-code" data-copy-code>Salin</button></div>' +
+      '<span class="code-actions">' + prev + '<button type="button" class="copy-code" data-copy-code>Salin</button></span></div>' +
       '<pre><code>' + esc(b.code) + '</code></pre></div>';
   }
 
